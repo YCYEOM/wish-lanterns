@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>소원 등불</title>
+<link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <div id="title" class="screen">
+    <div class="title-inner">
+      <div class="title-glyph">🏮</div>
+      <h1>소원 등불</h1>
+      <p>오늘의 마음을 등불에 담아 호수에 띄워 보세요</p>
+      <div class="hint pulse">화면을 눌러 시작</div>
+    </div>
+  </div>
+
+  <div id="hud" class="hidden">
+    <div id="stats"></div>
+    <button id="mute" class="icon-btn" title="소리">🔊</button>
+    <div id="tip">떠다니는 등불을 눌러 한마디를 읽어 보세요</div>
+    <button id="launchBtn" class="main-btn">🏮 등불 띄우기</button>
+  </div>
+
+  <div id="compose" class="panel hidden">
+    <button class="close" data-close="compose">✕</button>
+    <h2>나의 등불</h2>
+    <div class="label">등불 색</div>
+    <div id="swatches"></div>
+    <div class="label">한마디 <span class="sub">(비워도 괜찮아요)</span></div>
+    <div class="input-wrap">
+      <input id="msg" maxlength="30" placeholder="마음을 짧게 적어 보세요" autocomplete="off" />
+      <span id="count">0/30</span>
+    </div>
+    <div id="presets"></div>
+    <div class="label">어디로 보낼까요?</div>
+    <div class="modes">
+      <button class="mode on" data-mode="water">🌊 물 위로</button>
+      <button class="mode" data-mode="sky">✨ 하늘로</button>
+    </div>
+    <button id="send" class="main-btn wide">띄우기</button>
+  </div>
+
+  <div id="card" class="panel hidden">
+    <button class="close" data-close="card">✕</button>
+    <div id="cardWho"></div>
+    <div id="cardMsg"></div>
+    <div class="card-actions">
+      <button id="heartBtn" class="heart-btn">♡ <span id="heartCount">0</span></button>
+      <button id="hideBtn" class="ghost-btn">숨기기</button>
+    </div>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
