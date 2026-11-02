@@ -37,7 +37,7 @@ message, send ♡ (sparkle burst + chime), or hide it on your own screen. No sco
   (`.studio/mp.mjs`). Real cross-network play not yet tested.
 - Builds with Vite (`npm run build` -> dist/, `three` aliased to vendor/three.module.js); `.github/workflows/pages.yml` deploys.
 - Studio contract `src/studio.js` + demos `genex-cover`/`genex-clip` (`src/cover-shot.js`) kept for the Genex preview.
-- Repo: https://github.com/YCYEOM/wish-lanterns (private for now; Pages on a free account needs it public).
+- Repo: https://github.com/YCYEOM/wish-lanterns (public). Live: https://ycyeom.github.io/wish-lanterns/ (Pages via Actions).
 
 ## Current state
 v1 playable end-to-end: title, compose, launch (water/sky), read card, ♡, hide, stats, mute, ambience.
