@@ -41,7 +41,8 @@ const CAM_BASE = new THREE.Vector3(0, 3.4, 25);
 const CAM_TARGET = new THREE.Vector3(0, 5.5, -60);
 camera.position.copy(CAM_BASE);
 
-const LAKE = { cx: 0, cz: -70, rx: 76, rz: 88 };
+// the near shore sits behind the camera, so looking down always shows water, never a bare black bank
+const LAKE = { cx: 0, cz: -65, rx: 80, rz: 108 };
 function lakeE(x, z) { const a = (x - LAKE.cx) / LAKE.rx, b = (z - LAKE.cz) / LAKE.rz; return a * a + b * b; }
 
 const uniforms = { time: { value: 0 }, camPos: { value: new THREE.Vector3() } };
@@ -473,8 +474,9 @@ function updateCamera(dt) {
   } else {
     pointer.sx += (pointer.x - pointer.sx) * Math.min(1, dt * 1.5);
     pointer.sy += (pointer.y - pointer.sy) * Math.min(1, dt * 1.5);
-    camera.position.set(CAM_BASE.x + pointer.sx * 1.4 + Math.sin(T * 0.13) * 0.3, CAM_BASE.y - pointer.sy * 0.5 + Math.sin(T * 0.21) * 0.08, CAM_BASE.z);
-    camera.lookAt(CAM_TARGET.x + pointer.sx * 3, CAM_TARGET.y - pointer.sy * 2, CAM_TARGET.z);
+    const dy = pointer.sy > 0 ? pointer.sy * 0.35 : pointer.sy; // looking down is gentler than looking up
+    camera.position.set(CAM_BASE.x + pointer.sx * 1.4 + Math.sin(T * 0.13) * 0.3, CAM_BASE.y - dy * 0.5 + Math.sin(T * 0.21) * 0.08, CAM_BASE.z);
+    camera.lookAt(CAM_TARGET.x + pointer.sx * 3, CAM_TARGET.y - dy * 2, CAM_TARGET.z);
   }
   sky.position.copy(camera.position);
   uniforms.camPos.value.copy(camera.position);

@@ -35,6 +35,8 @@ message, send ♡ (sparkle burst + chime), or hide it on your own screen. No sco
 - Lakes (channels): rooms `lake-1..30`, cap 10 (`?lakecap=N` test override). Auto: try lake 1, listen 6 s, move on if
   already at cap. `?lake=N` (🔗 invite button copies it) joins that lake directly. Switching lakes drops the old lake's
   remote lanterns; join toasts only for peers who stay past the settle window. HUD shows `🌙 호수 N · 지금 M명`.
+- Lake ellipse extends behind the camera (cz -65, rz 108) and looking down is damped, so the bottom of the screen is
+  always water (a flat black bank showed there before).
 - Tapping: Studio's default pointer lock is disabled (`input: { pointerLock: false }`) — it made taps pick random lanterns;
   hit test uses each lantern's on-screen size; hovered lantern brightens. Verified 30/30 exact taps, 5/5 empty taps.
 - Needs a secure context (https) — GitHub Pages is. No TURN: peers behind strict NATs stay solo. Nothing persists server-side.
