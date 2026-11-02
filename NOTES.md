@@ -26,6 +26,17 @@ message, send ♡ (sparkle burst + chime), or hide it on your own screen. No sco
 - `window.__studio`: seed, start, pause, step(frames), state, debugCamera({pos,target}), hud(show), plus test helpers
   launch(text,color,mode) and openNearest().
 
+## Multiplayer (v2, built, not yet exercised online)
+- Net model: Genex `connect()` — one always-online shared lake, joined on the title tap; solo play still works.
+- Each player publishes their last 6 lanterns in `me.set({v,l})` (on change + 3 s keepalive); others read
+  `stateRaw`, spawn unseen ones (first sighting = scattered on the lake, later = launched fresh from the shore).
+  Hearts are `send('heart',{id})`; owners get a toast + 'received' count. Incoming text re-filtered.
+- SDKs load lazily in `src/net.js`; `src/genex.config.js` slug is empty until a Genex draft reports one,
+  so outside Genex the game is solo. The first Genex draft publish was declined by the user.
+- Project now builds with Vite (`npm run build` -> dist/); `three` aliased to vendor/three.module.js.
+- Studio contract: `src/studio.js` (template copy) installed with demos `genex-cover`/`genex-clip` (`src/cover-shot.js`).
+- Source is on GitHub (private): https://github.com/YCYEOM/wish-lanterns
+
 ## Current state
 v1 playable end-to-end: title, compose, launch (water/sky), read card, ♡, hide, stats, mute, ambience.
 Verified via headless Chrome screenshots (`.studio/shot.mjs`, files served via request interception).
