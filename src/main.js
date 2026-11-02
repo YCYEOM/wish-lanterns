@@ -1,7 +1,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { COLORS, PRESETS, WARM_MESSAGES, cleanMessage } from './data.js';
 import { Audio } from './audio.js';
-import { Net } from './net.js';
+import { Net, invitedLake } from './net.js';
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
 
@@ -511,8 +511,9 @@ let selected = null;
 let composeColor = COLORS[0].id, composeMode = 'water';
 
 let online = 0;
+let lakeNo = null;
 function updateStats() {
-  const people = online > 1 ? `🌙 지금 호수에 ${online}명 · ` : '';
+  const people = lakeNo ? `🌙 호수 ${lakeNo}${online > 1 ? ` · 지금 ${online}명` : ''} · ` : (online > 1 ? `🌙 지금 호수에 ${online}명 · ` : '');
   const got = save.received ? ` · 받은 반짝임 ${save.received}` : '';
   $('stats').textContent = `${people}띄운 등불 ${save.launched} · 보낸 반짝임 ${save.hearts}${got}`;
 }
@@ -556,6 +557,10 @@ const net = new Net({
     }
   },
   onPresence(n) { if (n !== online) { online = n; updateStats(); } },
+  onLake(n) { // moved to another lake: drop the previous lake's people and their lanterns
+    for (const L of [...lanterns]) if (!L.mine && L.id.includes(':')) { if (selected === L) closeCard(); removeLantern(L); }
+    lakeNo = n; online = 1; updateStats();
+  },
   onJoin() { if (screen !== 'title') toast('누군가 호숫가에 왔어요', 2400); },
   onStatus(msg) { toast(msg, 4000); },
 });
@@ -577,6 +582,8 @@ function startGame() {
   $('hud').classList.remove('hidden');
   updateStats();
   net.start();
+  const inv = invitedLake();
+  if (inv) setTimeout(() => toast(`초대받은 호수 ${inv}에 들어왔어요`, 3500), 1400);
 }
 $('title').addEventListener('pointerdown', startGame);
 
@@ -677,6 +684,12 @@ $('hideBtn').onclick = () => {
   save.hidden.push(selected.id); persist();
   const L = selected; closeCard(); removeLantern(L);
   toast('이 등불은 내 화면에서 숨겼어요', 2200);
+};
+$('invite').onclick = async () => {
+  const url = net.inviteUrl();
+  try { await navigator.clipboard.writeText(url); toast(`호수 ${lakeNo || 1} 초대 링크를 복사했어요 · 친구에게 보내 보세요`, 3500); }
+  catch { toast(url, 8000); }
+  audio.tick();
 };
 $('mute').onclick = () => { audio.setMuted(!audio.muted); $('mute').textContent = audio.muted ? '🔇' : '🔊'; };
 

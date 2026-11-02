@@ -85,3 +85,6 @@ h1 { font-size: clamp(40px, 7vw, 72px); font-weight: 700; letter-spacing: .12em;
 body.hud-off #hud, body.hud-off #toast { display: none !important; }
 #netline { position: absolute; left: 8px; bottom: 4px; font-size: 9.5px; color: #cdb9a0; opacity: .32; pointer-events: none; white-space: nowrap; }
 body.hud-off #netline { display: none; }
+
+.icon-btn.invite { right: 60px; }
+#toast { max-width: calc(100vw - 32px); white-space: normal; text-align: center; word-break: break-all; }

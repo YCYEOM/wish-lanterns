@@ -32,8 +32,14 @@ message, send ♡ (sparkle burst + chime), or hide it on your own screen. No sco
 - Each browser has a stable owner key (localStorage `wishLanterns.owner`). Action `lanterns` {o, l:[{k,t,c,m}] last 6}:
   sent to each peer on join (shown scattered on the lake) and broadcast on launch (shown launching from the shore).
   Action `heart` {id}: owner gets a toast + `received` count. Incoming text re-filtered and capped at 30 chars.
+- Lakes (channels): rooms `lake-1..30`, cap 10 (`?lakecap=N` test override). Auto: try lake 1, listen 6 s, move on if
+  already at cap. `?lake=N` (🔗 invite button copies it) joins that lake directly. Switching lakes drops the old lake's
+  remote lanterns; join toasts only for peers who stay past the settle window. HUD shows `🌙 호수 N · 지금 M명`.
+- Tapping: Studio's default pointer lock is disabled (`input: { pointerLock: false }`) — it made taps pick random lanterns;
+  hit test uses each lantern's on-screen size; hovered lantern brightens. Verified 30/30 exact taps, 5/5 empty taps.
 - Needs a secure context (https) — GitHub Pages is. No TURN: peers behind strict NATs stay solo. Nothing persists server-side.
-- Verified locally: two headless Chrome contexts connected (peers 1), A's launch appeared on B, B's heart reached A
+- Verified locally: overflow (cap 1: A lake 1, B auto-moved to lake 2, C via invite joined A in lake 1);
+  two headless Chrome contexts connected (peers 1), A's launch appeared on B, B's heart reached A
   (`.studio/mp.mjs`). Real cross-network play not yet tested.
 - Builds with Vite (`npm run build` -> dist/, `three` aliased to vendor/three.module.js); `.github/workflows/pages.yml` deploys.
 - Studio contract `src/studio.js` + demos `genex-cover`/`genex-clip` (`src/cover-shot.js`) kept for the Genex preview.
