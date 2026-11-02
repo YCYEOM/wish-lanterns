@@ -797,6 +797,7 @@ installStudio({
   begin() { startGame(); },
 });
 // keep our extra helpers next to the contract's own verbs
+window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];
 
 requestAnimationFrame(frame);

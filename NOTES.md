@@ -26,16 +26,18 @@ message, send ♡ (sparkle burst + chime), or hide it on your own screen. No sco
 - `window.__studio`: seed, start, pause, step(frames), state, debugCamera({pos,target}), hud(show), plus test helpers
   launch(text,color,mode) and openNearest().
 
-## Multiplayer (v2, built, not yet exercised online)
-- Net model: Genex `connect()` — one always-online shared lake, joined on the title tap; solo play still works.
-- Each player publishes their last 6 lanterns in `me.set({v,l})` (on change + 3 s keepalive); others read
-  `stateRaw`, spawn unseen ones (first sighting = scattered on the lake, later = launched fresh from the shore).
-  Hearts are `send('heart',{id})`; owners get a toast + 'received' count. Incoming text re-filtered.
-- SDKs load lazily in `src/net.js`; `src/genex.config.js` slug is empty until a Genex draft reports one,
-  so outside Genex the game is solo. The first Genex draft publish was declined by the user.
-- Project now builds with Vite (`npm run build` -> dist/); `three` aliased to vendor/three.module.js.
-- Studio contract: `src/studio.js` (template copy) installed with demos `genex-cover`/`genex-clip` (`src/cover-shot.js`).
-- Source is on GitHub (private): https://github.com/YCYEOM/wish-lanterns
+## Multiplayer (v2, P2P — works on GitHub Pages)
+- User wanted it on their GitHub, not Genex, so the Genex SDK path was dropped. Netcode is serverless WebRTC via
+  Trystero (Nostr relays for signalling), `src/net.js`: appId `ycyeom-wish-lanterns-v1`, room `lake`, joined on the title tap.
+- Each browser has a stable owner key (localStorage `wishLanterns.owner`). Action `lanterns` {o, l:[{k,t,c,m}] last 6}:
+  sent to each peer on join (shown scattered on the lake) and broadcast on launch (shown launching from the shore).
+  Action `heart` {id}: owner gets a toast + `received` count. Incoming text re-filtered and capped at 30 chars.
+- Needs a secure context (https) — GitHub Pages is. No TURN: peers behind strict NATs stay solo. Nothing persists server-side.
+- Verified locally: two headless Chrome contexts connected (peers 1), A's launch appeared on B, B's heart reached A
+  (`.studio/mp.mjs`). Real cross-network play not yet tested.
+- Builds with Vite (`npm run build` -> dist/, `three` aliased to vendor/three.module.js); `.github/workflows/pages.yml` deploys.
+- Studio contract `src/studio.js` + demos `genex-cover`/`genex-clip` (`src/cover-shot.js`) kept for the Genex preview.
+- Repo: https://github.com/YCYEOM/wish-lanterns (private for now; Pages on a free account needs it public).
 
 ## Current state
 v1 playable end-to-end: title, compose, launch (water/sky), read card, ♡, hide, stats, mute, ambience.
