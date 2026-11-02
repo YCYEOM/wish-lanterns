@@ -447,7 +447,7 @@ function updateLanterns(dt) {
       }
     }
     const flick = 0.88 + 0.08 * Math.sin(T * 7.3 + L.ph) + 0.05 * Math.sin(T * 13.1 + L.ph2);
-    const sel = L.selected ? 1 + 0.25 * Math.sin(T * 5) + 0.4 : 1;
+    const sel = L.selected ? 1 + 0.25 * Math.sin(T * 5) + 0.4 : L === hovered ? 1.35 : 1;
     const fresh = 1 + L.fresh * 0.25;
     L.group.position.set(L.x, L.y, L.z);
     L.mat.opacity = 0.96 * L.alpha;
@@ -682,19 +682,27 @@ $('mute').onclick = () => { audio.setMuted(!audio.muted); $('mute').textContent 
 
 // picking
 const tmpV = new THREE.Vector3();
+let hovered = null;
 function pickLantern(clientX, clientY) {
+  // Hit test against each lantern's real on-screen size, so a tap lands on the lantern under the finger.
   const w = window.innerWidth, h = window.innerHeight;
-  let best = null, bestD = Infinity;
+  const focalPx = h / (2 * Math.tan((camera.fov * Math.PI) / 360));
+  let best = null, bestScore = Infinity, bestDist = Infinity;
   for (const L of lanterns) {
     if (L.alpha < 0.3) continue;
-    tmpV.set(L.x, L.y + 0.45, L.z);
+    const water = L.mode === 'water';
+    tmpV.set(L.x, L.y + (water ? 0.63 : 0.85), L.z);
     const dist = tmpV.distanceTo(camera.position);
     tmpV.project(camera);
     if (tmpV.z > 1) continue;
     const sx = (tmpV.x * 0.5 + 0.5) * w, sy = (-tmpV.y * 0.5 + 0.5) * h;
     const d = Math.hypot(sx - clientX, sy - clientY);
-    const radius = Math.max(26, Math.min(80, (h * 1.6) / dist));
-    if (d < radius && d < bestD) { best = L; bestD = d; }
+    const radius = Math.min(90, Math.max(12, ((water ? 0.62 : 0.8) * focalPx) / dist + 8));
+    if (d > radius) continue;
+    const score = d / radius;
+    if (score < bestScore - 0.15 || (Math.abs(score - bestScore) <= 0.15 && dist < bestDist)) {
+      best = L; bestScore = score; bestDist = dist;
+    }
   }
   return best;
 }
@@ -707,7 +715,8 @@ canvas.addEventListener('pointerdown', (e) => {
 window.addEventListener('pointermove', (e) => {
   pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
   pointer.y = (e.clientY / window.innerHeight) * 2 - 1;
-  if (screen === 'lake' || screen === 'card') canvas.style.cursor = pickLantern(e.clientX, e.clientY) ? 'pointer' : 'default';
+  if (screen === 'lake' || screen === 'card') { hovered = pickLantern(e.clientX, e.clientY); canvas.style.cursor = hovered ? 'pointer' : 'default'; }
+  else hovered = null;
 });
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { closeCard(); if (screen === 'compose') closePanel('compose'); }
@@ -785,6 +794,7 @@ const demos = makeCoverDemos({
 });
 installStudio({
   renderer, scene, camera, canvas,
+  input: { pointerLock: false }, // a point-and-tap game: never capture the cursor
   reset(seed) { reset(seed | 0); },
   probes: ext.probes,
   demos,
@@ -797,6 +807,8 @@ installStudio({
   begin() { startGame(); },
 });
 // keep our extra helpers next to the contract's own verbs
+window.__studio.screenOf = (id) => { const L = lanterns.find(l => l.id === id); if (!L) return null; const v = new THREE.Vector3(L.x, L.y + (L.mode === 'water' ? 0.63 : 0.85), L.z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight, dist: +camera.position.distanceTo(new THREE.Vector3(L.x, L.y, L.z)).toFixed(1) }; };
+window.__studio.ids = () => lanterns.map(l => l.id);
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];
 
