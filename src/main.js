@@ -1,6 +1,9 @@
 import * as THREE from '../vendor/three.module.js';
 import { COLORS, PRESETS, WARM_MESSAGES, cleanMessage } from './data.js';
 import { Audio } from './audio.js';
+import { Net } from './net.js';
+import { makeCoverDemos } from './cover-shot.js';
+import { installStudio } from './studio.js';
 
 // ---------------------------------------------------------------- rng
 let rngState = 1;
@@ -19,8 +22,8 @@ const SAVE_KEY = 'wishLanterns.v1';
 function loadSave() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
-    return { launched: s.launched | 0, hearts: s.hearts | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [] };
-  } catch { return { launched: 0, hearts: 0, hidden: [], hearted: [], mine: [] }; }
+    return { launched: s.launched | 0, hearts: s.hearts | 0, received: s.received | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [] };
+  } catch { return { launched: 0, hearts: 0, received: 0, hidden: [], hearted: [], mine: [] }; }
 }
 let save = loadSave();
 function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch {} }
@@ -300,7 +303,7 @@ function makeLantern(opts) {
   const refl = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.45 }));
   lanternGroup.add(g); lanternGroup.add(refl);
   const L = {
-    id: opts.id, mine: !!opts.mine, text: opts.text || '', color: col.id, mode: opts.mode,
+    id: opts.id, mine: !!opts.mine, who: opts.who || '', text: opts.text || '', color: col.id, mode: opts.mode,
     hearts: opts.hearts | 0, group: g, mat, glow, refl,
     x: opts.x, y: opts.y, z: opts.z, vx: opts.vx || 0, vz: opts.vz || 0, vy: opts.vy || 0,
     ph: rng() * 100, ph2: rng() * 100, speed: rr(0.5, 1), alpha: opts.alpha ?? 1, fadeIn: opts.fadeIn || 0,
@@ -507,9 +510,57 @@ let screen = 'title';
 let selected = null;
 let composeColor = COLORS[0].id, composeMode = 'water';
 
+let online = 0;
 function updateStats() {
-  $('stats').textContent = `띄운 등불 ${save.launched} · 보낸 반짝임 ${save.hearts}`;
+  const people = online > 1 ? `🌙 지금 호수에 ${online}명 · ` : '';
+  const got = save.received ? ` · 받은 반짝임 ${save.received}` : '';
+  $('stats').textContent = `${people}띄운 등불 ${save.launched} · 보낸 반짝임 ${save.hearts}${got}`;
 }
+
+// ---------------------------------------------------------------- multiplayer
+let netSeed = 99991;
+const nrnd = () => { netSeed = (netSeed * 1664525 + 1013904223) >>> 0; return netSeed / 4294967296; };
+let lastArrivalToast = 0;
+const net = new Net({
+  onLantern(e, who, fresh) {
+    if (save.hidden.includes(e.netId) || lanterns.some(l => l.id === e.netId)) return;
+    const text = cleanMessage(e.text);
+    const water = e.mode === 'water';
+    let x, z, y;
+    if (fresh) { // launched just now by someone on the shore: comes in from the near edge
+      x = (nrnd() - 0.5) * 50; z = water ? 12 : 2; y = water ? 0 : 1;
+    } else {
+      for (let i = 0; i < 30; i++) {
+        x = (nrnd() * 2 - 1) * LAKE.rx; z = LAKE.cz + (nrnd() * 2 - 1) * LAKE.rz;
+        if (lakeE(x, z) < 0.8 && z < 0) break;
+      }
+      y = water ? 0 : 6 + nrnd() * 50;
+    }
+    makeLantern({ id: e.netId, who, text, color: e.color, mode: e.mode, x, y, z,
+      vx: 0, vz: fresh ? (water ? -1.6 : -0.4) : 0, vy: water ? 0 : 0.5, alpha: 0, fadeIn: 2, fresh: fresh ? 5 : 0, hearts: 0 });
+    if (fresh && screen !== 'title' && T - lastArrivalToast > 4) {
+      lastArrivalToast = T;
+      toast(text ? `누군가 「${text}」 등불을 띄웠어요` : '누군가 조용히 등불을 띄웠어요');
+      audio.chime([659.25, 880], 0.12);
+    }
+  },
+  onHeart(netId) {
+    const mineKey = net.myKey ? net.myKey + ':' : null;
+    const localId = mineKey && netId.startsWith(mineKey) ? netId.slice(mineKey.length) : netId;
+    const L = lanterns.find(l => l.id === localId);
+    if (L) { burst(L); L.hearts++; if (selected === L) refreshHeart(); }
+    if (L && L.mine) {
+      save.received++; persist(); updateStats();
+      toast(L.text ? `누군가 「${L.text}」 등불에 ♡를 보냈어요` : '누군가 내 등불에 ♡를 보냈어요');
+      audio.chime([783.99, 987.77, 1174.66]);
+    }
+  },
+  onPresence(n) { if (n !== online) { online = n; updateStats(); } },
+  onJoin() { if (screen !== 'title') toast('누군가 호숫가에 왔어요', 2400); },
+  onStatus(msg) { toast(msg, 4000); },
+});
+net.setMine(save.mine);
+setInterval(() => { net.poll(); const d = $('netline'); if (d) d.textContent = net.statusLine(); }, 250);
 let toastTimer = 0;
 function toast(msg, ms = 3200) {
   const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
@@ -525,6 +576,7 @@ function startGame() {
   setTimeout(() => $('title').classList.add('hidden'), 1200);
   $('hud').classList.remove('hidden');
   updateStats();
+  net.start();
 }
 $('title').addEventListener('pointerdown', startGame);
 
@@ -574,7 +626,7 @@ function sendLantern() {
   save.mine.push({ id, text, color: composeColor, mode: composeMode });
   if (save.mine.length > 12) save.mine.shift();
   save.launched++;
-  persist(); updateStats();
+  persist(); updateStats(); net.setMine(save.mine);
   $('compose').classList.add('hidden'); $('launchBtn').classList.remove('hidden'); $('tip').classList.remove('hidden'); screen = 'lake';
   $('msg').value = ''; onMsgInput();
   audio.plop();
@@ -586,7 +638,7 @@ function sendLantern() {
 function openCard(L) {
   if (selected) selected.selected = 0;
   selected = L; L.selected = 1;
-  $('cardWho').textContent = L.mine ? '내가 띄운 등불' : '누군가의 등불';
+  $('cardWho').textContent = L.mine ? '내가 띄운 등불' : L.who ? `${L.who}님의 등불` : '누군가의 등불';
   const m = $('cardMsg');
   if (L.text) { m.textContent = L.text; m.style.fontStyle = 'normal'; m.style.opacity = 1; }
   else { m.textContent = '말없이 띄운 등불이에요\n그 마음도 닿기를'; m.style.whiteSpace = 'pre-line'; m.style.opacity = 0.75; }
@@ -615,6 +667,7 @@ $('heartBtn').onclick = () => {
     save.hearted.push(selected.id); save.hearts++;
     persist(); updateStats(); refreshHeart();
     burst(selected); audio.chime([783.99, 987.77, 1174.66]);
+    net.sendHeart(selected.mine ? net.netIdFor(selected.id) || selected.id : selected.id);
   } else {
     burst(selected); audio.tick();
   }
@@ -671,6 +724,8 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+function stepFrames(n) { for (let i = 0; i < n; i++) update(1 / 60); render(1 / 60); }
+
 function reset(seed = 1) {
   reseed(seed);
   T = 0; star = null; nextStar = 8;
@@ -680,25 +735,25 @@ function reset(seed = 1) {
   update(0);
 }
 
-window.__studio = {
-  seed(n) { reset(n | 0); },
-  start() { running = true; if (screen === 'title') startGame(); },
-  pause() { running = false; },
-  step(frames = 1) { for (let i = 0; i < frames; i++) update(1 / 60); render(1 / 60); },
-  state() {
+function setCam(opts) {
+  if (!opts) { debugCam = null; return; }
+  debugCam = { pos: new THREE.Vector3(...opts.pos), target: new THREE.Vector3(...(opts.target || [0, 3, -60])) };
+  render(0);
+}
+function hudShow(show) { document.body.classList.toggle('hud-off', !show); }
+
+const ext = {
+  probes() {
     return {
       screen, time: +T.toFixed(3), lanterns: lanterns.length,
       water: lanterns.filter(l => l.mode === 'water').length, sky: lanterns.filter(l => l.mode === 'sky').length,
       launched: save.launched, heartsSent: save.hearts, mine: lanterns.filter(l => l.mine).length,
       selected: selected ? { id: selected.id, text: selected.text } : null,
+      net: net.status, online, build: net.statusLine().split(' · ')[0],
     };
   },
-  debugCamera(opts) {
-    if (!opts) { debugCam = null; return { pos: camera.position.toArray() }; }
-    debugCam = { pos: new THREE.Vector3(...opts.pos), target: new THREE.Vector3(...(opts.target || [0, 3, -60])) };
-    render(0); return true;
-  },
-  hud(show) { document.body.classList.toggle('hud-off', !show); },
+  setCam,
+  hudShow,
   // test helpers
   launch(text = '오늘도 수고했어', color = 'amber', mode = 'water') {
     if (screen === 'title') startGame();
@@ -707,5 +762,41 @@ window.__studio = {
   openNearest() { const L = lanterns.filter(l => l.text).sort((a, b) => b.z - a.z)[0]; if (L) openCard(L); return L && L.text; },
 };
 
-reset(1);
+// ---------------------------------------------------------------- cover / clip demos
+const demos = makeCoverDemos({
+  reset,
+  enterLakeQuiet() {
+    screen = 'lake';
+    $('title').classList.add('hidden');
+    $('hud').classList.remove('hidden');
+    closeCard(); $('compose').classList.add('hidden'); $('toast').classList.add('hidden');
+  },
+  hud(show) { hudShow(show); },
+  pose(list) {
+    list.forEach((o, i) => makeLantern({ id: 'cover' + i, text: '', color: o.color, mode: o.mode, x: o.x, y: o.y || 0, z: o.z }));
+  },
+  step(n) { stepFrames(n); },
+  camera(c) { setCam(c); },
+  launchQuiet(text, color, mode) {
+    makeLantern({ id: 'clip0', text, color, mode, x: 0, y: mode === 'sky' ? 0.6 : 0, z: mode === 'sky' ? 14 : 15,
+      vz: mode === 'sky' ? -0.6 : -2.2, vy: mode === 'sky' ? 0.9 : 0, alpha: 0, fadeIn: 1, fresh: 5 });
+  },
+  start() { running = true; },
+});
+installStudio({
+  renderer, scene, camera, canvas,
+  reset(seed) { reset(seed | 0); },
+  probes: ext.probes,
+  demos,
+  cameras: {
+    lake() { setCam(null); render(0); },
+    low() { setCam({ pos: [0, 2.3, 23], target: [0, 5.8, -60] }); },
+    sky() { setCam({ pos: [0, 1.5, 22], target: [0, 30, -60] }); },
+  },
+  flow: () => (screen === 'title' ? 'menu' : 'playing'),
+  begin() { startGame(); },
+});
+// keep our extra helpers next to the contract's own verbs
+for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];
+
 requestAnimationFrame(frame);

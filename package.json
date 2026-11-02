@@ -1,0 +1,18 @@
+{
+  "name": "wish-lanterns",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "@genex-ai/embed-sdk": "0.33.0",
+    "@genex-ai/multiplayer": "0.17.1"
+  }
+}
