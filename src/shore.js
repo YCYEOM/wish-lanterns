@@ -38,7 +38,31 @@ export function groundY(x, z) {
 }
 // the little wooden pier just right of the start: it runs from the sand (d = PIER.d0) straight out
 // toward the lake centre into the shallows (d = PIER.d1). Scenery: the character walks around it.
-const PIER = { a: Math.PI / 2 - 0.068, d0: 3.2, d1: -10.5, half: 1.0, deck: 0.52 };
+const PIER = { a: Math.PI / 2 - 0.19, d0: 3.2, d1: -10.5, half: 1.0, deck: 0.52 };   // root at x≈15: clear of the start and the lanterns posed off it
+
+// solid things standing on (or at the edge of) the walkable sand: the character walks around them
+function atX(x, d) {                    // ring angle on the near shore whose point at distance d has this x
+  const a0 = Math.acos(Math.max(-1, Math.min(1, x / (shoreRadius(Math.PI / 2) + d))));
+  return Math.acos(Math.max(-1, Math.min(1, x / (shoreRadius(a0) + d))));
+}
+function ringAt(a, d) { const r = shoreRadius(a) + d; return { x: LAKE.cx + Math.cos(a) * r, z: LAKE.cz + Math.sin(a) * r }; }
+// stone lanterns (k: 1) and candle cairns (k: 0) along the beach, x along the shore and d from the waterline
+const SHORE_LIGHTS = [
+  { x: -6, d: 3.0, k: 1 }, { x: 5.5, d: 5.2, k: 0 }, { x: -15, d: 5.5, k: 0 }, { x: -22, d: 3.5, k: 1 },
+  { x: 11.5, d: 2.2, k: 1 }, { x: 24, d: 4.0, k: 0 }, { x: 33, d: 3.0, k: 1 }, { x: -37, d: 4.5, k: 1 },
+  { x: -30, d: 9.0, k: 0 }, { x: 46, d: 5.0, k: 1 }, { x: -50, d: 3.5, k: 0 },
+].map(L => { const p = ringAt(atX(L.x, L.d), L.d); return { x: p.x, z: p.z, k: L.k }; });
+// trees standing in the shallows at the ends of the start beach: lake-side of anywhere the character
+// can stand, so the follow camera (always land-side) never looks through them
+const WATER_TREES = [
+  { x: -11.5, d: -1.4, h: 1.15, seed: 3 }, { x: -16.5, d: -0.6, h: 0.9, seed: 8 }, { x: -27, d: -1.0, h: 1.05, seed: 5 },
+  { x: 22, d: -1.2, h: 1.1, seed: 12 }, { x: 30, d: -0.5, h: 0.85, seed: 4 }, { x: -44, d: -1.0, h: 1.2, seed: 9 }, { x: 52, d: -1.2, h: 1.0, seed: 6 },
+].map(T => { const p = ringAt(atX(T.x, T.d), T.d); return { ...T, x: p.x, z: p.z }; });
+function nearLight(x, z, r) { for (const L of SHORE_LIGHTS) if ((x - L.x) ** 2 + (z - L.z) ** 2 < r * r) return true; return false; }
+function blocked(x, z) {
+  for (const L of SHORE_LIGHTS) { const dx = x - L.x, dz = z - L.z; if (dx * dx + dz * dz < (L.k ? 0.55 : 0.4) ** 2) return true; }
+  return false;
+}
 function pierLocal(x, z) {             // -> { d: signed distance along the pier axis from the waterline, s: sideways offset }
   const ca = Math.cos(PIER.a), sa = Math.sin(PIER.a);
   const r0 = shoreRadius(PIER.a);
@@ -53,7 +77,7 @@ function onPier(x, z, m = 0) {
 export function walkable(x, z) {
   const d = waterDist(x, z);
   if (d < 0.5 || d > 30) return false;
-  if (onPier(x, z, 0.25)) return false;
+  if (onPier(x, z, 0.25) || blocked(x, z)) return false;
   return z > -40;
 }
 export function nearestShore(x, z, d = 0.8) {
@@ -73,7 +97,7 @@ function hash2(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; r
 // shared lighting for the shore and every dressing mesh: dim moon from the upper left, a cool sky
 // fill, the character's warm lantern pooling on whatever is near it, fog toward the horizon
 const LIGHT_GLSL = /* glsl */`
-  uniform vec3 camPos; uniform vec3 playerPos; uniform float time; uniform vec3 pierLamp;
+  uniform vec3 camPos; uniform vec3 playerPos; uniform float time; uniform vec3 pierLamp; uniform vec4 lamps[12];
   vec3 shoreLight(vec3 col, vec3 N, vec3 W, float ao){
     vec3 L = normalize(vec3(-0.4, 0.8, -0.45));
     float diff = max(dot(N, L), 0.0);
@@ -86,6 +110,14 @@ const LIGHT_GLSL = /* glsl */`
     vec3 toL = pierLamp - W; float ld = length(toL);
     float flick = 0.9 + 0.1 * sin(time * 6.1) * sin(time * 2.3 + 1.0);
     lit += col * vec3(1.5, 0.78, 0.34) * exp(-ld * ld * 0.09) * 0.95 * flick * (0.3 + 0.7 * max(dot(N, toL / max(ld, 1e-3)), 0.0));
+    // the stone lanterns and candle cairns along the beach: warm pools on the sand around each
+    for (int i = 0; i < 12; i++) {
+      vec4 Lp = lamps[i]; if (Lp.w <= 0.0) continue;
+      vec3 tl = Lp.xyz - W; float dl = length(tl);
+      float fl = 0.88 + 0.12 * sin(time * (5.3 + float(i)) + float(i) * 2.1) * sin(time * 1.9 + float(i));
+      float fall = Lp.w > 0.7 ? 0.075 : 0.2;
+      lit += col * vec3(1.55, 0.74, 0.30) * exp(-dl * dl * fall) * Lp.w * fl * smoothstep(0.35, 1.1, dl) * (0.35 + 0.65 * max(dot(N, tl / max(dl, 1e-3)), 0.0));
+    }
     return lit;
   }
   vec3 shoreFog(vec3 lit, vec3 W){
@@ -259,6 +291,7 @@ export function buildShore(scene, uniforms) {
     time: uniforms.time, camPos: uniforms.camPos,
     playerPos: { value: new THREE.Vector3(0, 0, 16) },
     pierLamp: { value: new THREE.Vector3(0, -50, 0) },
+    lamps: { value: Array.from({ length: 12 }, () => new THREE.Vector4(0, -50, 0, 0)) },
     lakeC: { value: new THREE.Vector3(LAKE.cx, 0, LAKE.cz) },
     lakeR: { value: LAKE.r },
   };
@@ -301,12 +334,12 @@ export function buildShore(scene, uniforms) {
         float wave = 0.5 + 0.5 * sin(time * 0.55 + a * 9.0 + big * 3.0);
         float reach = 0.3 + 1.5 * wave * wave;                 // how far the current wave runs up
         float wetLine = 3.4 + 1.6 * mid;                          // the darker band left by earlier waves
-        float wetK = 1.0 - smoothstep(wetLine - 0.8, wetLine + 0.6, d);
+        float wetK = 1.0 - smoothstep(wetLine - 0.35, wetLine + 0.25, d);
         float washK = 1.0 - smoothstep(reach - 0.15, reach + 0.05, d);
 
         // --- palette: warm-dark sand, damp, wet, the grass bank
-        vec3 sandDry = mix(vec3(0.34, 0.25, 0.17), vec3(0.42, 0.31, 0.21), big);
-        vec3 sandDamp = vec3(0.15, 0.105, 0.08);
+        vec3 sandDry = mix(vec3(0.27, 0.20, 0.14), vec3(0.34, 0.25, 0.17), big);
+        vec3 sandDamp = vec3(0.095, 0.07, 0.058);
         vec3 sandWet = vec3(0.075, 0.062, 0.065);
         vec3 grassA = vec3(0.075, 0.13, 0.065), grassB = vec3(0.13, 0.17, 0.07), soil = vec3(0.12, 0.09, 0.06);
         vec3 col = sandDry;
@@ -319,6 +352,9 @@ export function buildShore(scene, uniforms) {
         col += fleck * vec3(0.18, 0.16, 0.14);
         // damp and wet sand toward the water
         col = mix(col, sandDamp * (0.8 + 0.4 * mid), wetK * 0.92);
+        // the wrack line: a ragged dark seam of weed and twigs where the high water stopped
+        float wr = exp(-pow((d - wetLine - 0.2) / 0.22, 2.0)) * smoothstep(0.4, 0.65, n21(p * 2.6 + 11.0));
+        col = mix(col, vec3(0.045, 0.04, 0.03), wr * 0.75);
         col = mix(col, sandWet, washK);
         // the grass bank creeps down over the sand in tongues
         float gEdge = 8.5 + 6.0 * big + 2.0 * mid;
@@ -386,7 +422,7 @@ export function buildShore(scene, uniforms) {
     const near = a > NEAR_A0 - 0.3 && a < NEAR_A1 + 0.3;
     const d = near ? 4 + Math.pow(R(), 1.6) * 46 : rr(3, 40);
     const q = ringPt(a, d);
-    if (onPier(q.x, q.z, 1.2)) continue;
+    if (onPier(q.x, q.z, 1.2) || nearLight(q.x, q.z, 1.3)) continue;
     const bankEdge = 9 + 6 * hash2(q.x * 0.07, q.z * 0.07);
     if (d < bankEdge && R() > 0.3) continue;           // only a few strays on the open sand
     const s = d < bankEdge ? rr(0.6, 1.0) : rr(0.5, 1.0);
@@ -402,7 +438,7 @@ export function buildShore(scene, uniforms) {
   for (let i = 0; i < 120; i++) {                        // pebbles and small stones on the walkable sand, thicker at the wet band
     const a = rr(NEAR_A0, NEAR_A1), d = i % 2 ? rr(0.2, 4) : rr(0.6, 22);
     const q = ringPt(a, d); const s = rr(0.12, 0.38);
-    if (onPier(q.x, q.z, 1.2)) continue;
+    if (onPier(q.x, q.z, 1.2) || nearLight(q.x, q.z, 1.3)) continue;
     rocks.push({ x: q.x, y: groundY(q.x, q.z) - s * 0.25, z: q.z, rx: rr(-0.3, 0.3), ry: rr(0, 6.28), sx: s, sy: s, sz: s * rr(0.7, 1.2), c: rockCol() });
   }
   const clusters = [[NEAR_A0 - 0.06, 1], [NEAR_A1 + 0.06, 1], [1.33, -1.4], [1.86, -1.2], [1.12, 2.5], [2.05, 2.0], [0.62, 0.5], [2.5, 0.8],
@@ -412,7 +448,7 @@ export function buildShore(scene, uniforms) {
     for (let i = 0; i < n; i++) {
       const a = ca + rr(-0.025, 0.025), d = cd + rr(-1.4, 1.4);
       const q = ringPt(a, d); const big = i === 0 ? rr(0.9, 1.5) : rr(0.3, 0.8);
-      if (onPier(q.x, q.z, 1.2)) continue;
+      if (onPier(q.x, q.z, 1.2) || nearLight(q.x, q.z, 1.3)) continue;
       const s = big * (Math.abs(a - Math.PI / 2) < 0.6 && d > 0.5 ? 0.55 : 1);  // keep the sand near the start open
       rocks.push({ x: q.x, y: Math.max(groundY(q.x, q.z), -0.6) - s * 0.15, z: q.z, rx: rr(-0.25, 0.25), ry: rr(0, 6.28), rz: rr(-0.2, 0.2), sx: s * rr(0.9, 1.4), sy: s, sz: s, c: rockCol() });
     }
@@ -424,7 +460,7 @@ export function buildShore(scene, uniforms) {
   for (let i = 0; i < 16; i++) {
     const a = i < 12 ? rr(NEAR_A0 + 0.05, NEAR_A1 - 0.05) : rr(0, Math.PI * 2);
     const d = rr(1.6, 6.5); const q = ringPt(a, d);
-    if (onPier(q.x, q.z, 1.2)) continue;
+    if (onPier(q.x, q.z, 1.2) || nearLight(q.x, q.z, 1.3)) continue;
     const len = rr(1.4, 3.6), th = rr(0.7, 1.3), v = rr(0.85, 1.15);
     wood.push({ x: q.x, y: groundY(q.x, q.z) + 0.06 * th, z: q.z, ry: -a - Math.PI / 2 + rr(-0.5, 0.5), rz: rr(-0.05, 0.05), sx: len, sy: th, sz: th, c: [0.38 * v, 0.33 * v, 0.28 * v] });
   }
@@ -432,13 +468,17 @@ export function buildShore(scene, uniforms) {
 
   // reed clumps standing in the shallows (the open water in front of the start stays clear for launches)
   const reeds = [];
-  for (let i = 0; i < 240 && reeds.length < 110; i++) {
-    const a = rr(0, Math.PI * 2);
-    if (Math.abs(a - Math.PI / 2) < 0.12) continue;
-    const d = rr(-3.2, 0.4); const q = ringPt(a, d);
-    if (onPier(q.x, q.z, 0.4)) continue;
-    const s = rr(0.9, 2.0), g = rr(0.8, 1.15);
-    reeds.push({ x: q.x, y: Math.max(groundY(q.x, q.z), -0.35), z: q.z, ry: rr(0, 6.28), sx: rr(0.8, 1.3), sy: s, sz: rr(0.8, 1.3), c: [0.17 * g, 0.21 * g, 0.10 * g] });
+  for (let c = 0; c < 70; c++) {                      // reed beds: a centre and 4–9 clumps around it
+    const ca = c < 44 ? rr(NEAR_A0 - 0.1, NEAR_A1 + 0.1) : rr(0, Math.PI * 2);
+    if (Math.abs(ca - Math.PI / 2) < 0.1) continue;  // the open water in front of the start stays clear for launches
+    const cd = rr(-2.6, -0.2), n = 4 + Math.floor(R() * 6);
+    for (let i = 0; i < n; i++) {
+      const a = ca + rr(-0.022, 0.022), d = cd + rr(-0.9, 0.9);
+      const q = ringPt(a, d);
+      if (onPier(q.x, q.z, 0.4) || d > 0.5) continue;
+      const s = rr(0.9, 2.1), g = rr(0.8, 1.15);
+      reeds.push({ x: q.x, y: Math.max(groundY(q.x, q.z), -0.35), z: q.z, ry: rr(0, 6.28), sx: rr(0.8, 1.3), sy: s, sz: rr(0.8, 1.3), c: [0.17 * g, 0.21 * g, 0.10 * g] });
+    }
   }
   instanced(dress, reedClump(21), dressingMaterial(shoreUniforms, 0.09, true), reeds, 'reeds');
 
@@ -508,18 +548,140 @@ export function buildShore(scene, uniforms) {
   cap.position.set(0, 0.19, 0); lamp.add(cap);
   dress.add(lamp);
   // a soft halo around the lamp (additive sprite drawn from a tiny generated gradient, no canvas needed)
-  const N = 32, px = new Uint8Array(N * N * 4);
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    const r = Math.hypot(x - N / 2 + 0.5, y - N / 2 + 0.5) / (N / 2); const v = Math.max(0, 1 - r); const k = v * v;
-    px.set([255, 190, 120, Math.round(255 * k)], (y * N + x) * 4);
+  const NH = 32, px = new Uint8Array(NH * NH * 4);
+  for (let y = 0; y < NH; y++) for (let x = 0; x < NH; x++) {
+    const r = Math.hypot(x - NH / 2 + 0.5, y - NH / 2 + 0.5) / (NH / 2); const v = Math.max(0, 1 - r); const k = v * v;
+    px.set([255, 190, 120, Math.round(255 * k)], (y * NH + x) * 4);
   }
-  const haloTex = new THREE.DataTexture(px, N, N); haloTex.needsUpdate = true;
+  const haloTex = new THREE.DataTexture(px, NH, NH);
+  haloTex.magFilter = THREE.LinearFilter; haloTex.minFilter = THREE.LinearFilter; haloTex.needsUpdate = true;
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.85 }));
   halo.scale.set(3.4, 3.4, 1); lamp.add(halo); halo.userData.tag = 'pier-lamp';
   shoreUniforms.pierLamp.value.set(lampAt.x, PIER.deck + 1.3, lampAt.z);
 
+  // ---------------------------------------------------------------- shore lights
+  // stone lanterns (tōrō): plinth, post, fire box with paper windows, wide roof and a knob on top
+  function stoneLantern() {
+    const parts = [];
+    const add = (g, y) => { g.deleteAttribute('uv'); g.translate(0, y, 0); parts.push(g.toNonIndexed()); };
+    add(new THREE.CylinderGeometry(0.34, 0.4, 0.16, 6), 0.08);
+    add(new THREE.CylinderGeometry(0.12, 0.15, 0.62, 6), 0.47);
+    add(new THREE.CylinderGeometry(0.26, 0.2, 0.1, 6), 0.83);
+    for (let k = 0; k < 6; k++) {                     // corner posts of the fire box
+      const g = new THREE.BoxGeometry(0.06, 0.28, 0.06); const a = k / 6 * Math.PI * 2 + Math.PI / 6;
+      g.deleteAttribute('uv'); g.translate(Math.cos(a) * 0.18, 1.02, Math.sin(a) * 0.18); parts.push(g.toNonIndexed());
+    }
+    add(new THREE.CylinderGeometry(0.05, 0.46, 0.2, 6), 1.26);
+    add(new THREE.CylinderGeometry(0.08, 0.1, 0.06, 6), 1.38);
+    add(new THREE.SphereGeometry(0.08, 6, 4), 1.46);
+    const g = mergeGeos(parts); g.computeVertexNormals(); return g;
+  }
+  function cairn() {
+    const parts = [];
+    [[0.32, 0.12, 0.06], [0.24, 0.1, 0.17], [0.16, 0.09, 0.26]].forEach(([r, h, y], i) => {
+      const g = rockGeometry(31 + i); g.scale(r, h * 1.4, r * 0.9); g.rotateY(i * 1.3); g.translate(0.02 * i, y, -0.015 * i); parts.push(g);
+    });
+    const g = mergeGeos(parts); g.computeVertexNormals(); return g;
+  }
+  const stones = [], cairns = [], flames = [];
+  SHORE_LIGHTS.forEach((L, i) => {
+    const y = groundY(L.x, L.z) - 0.04; const v = 0.85 + 0.3 * hash2(i, 3.7);
+    const item = { x: L.x, y, z: L.z, ry: hash2(i, 9.1) * 6.28, sx: 1, sy: 1, sz: 1, c: [0.20 * v, 0.195 * v, 0.19 * v] };
+    if (L.k) { stones.push(item); flames.push({ x: L.x, y: y + 1.02, z: L.z, k: 1 }); }
+    else { cairns.push(item); flames.push({ x: L.x, y: y + 0.4, z: L.z, k: 0 }); }
+    shoreUniforms.lamps.value[i].set(L.x, y + (L.k ? 0.95 : 0.4), L.z, L.k ? 1.5 : 0.9);
+  });
+  instanced(dress, stoneLantern(), dressingMaterial(shoreUniforms, 0, false), stones, 'stone-lantern');
+  instanced(dress, cairn(), dressingMaterial(shoreUniforms, 0, false), cairns, 'candle-cairn');
+  // the flames: a lit paper core in each lantern, a candle stub on each cairn, both with a soft halo
+  const coreGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.24, 6);
+  const candleGeo = new THREE.CylinderGeometry(0.035, 0.04, 0.12, 6);
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0xffa648 });
+  const halos = [];
+  flames.forEach((f, i) => {
+    const m = new THREE.Mesh(f.k ? coreGeo : candleGeo, coreMat);
+    m.position.set(f.x, f.y + (f.k ? 0 : -0.06), f.z); m.userData.tag = f.k ? 'stone-lantern' : 'candle-cairn';
+    dress.add(m);
+    const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: f.k ? 0.95 : 0.8 }));
+    const sc = f.k ? 2.8 : 1.5; h.scale.set(sc, sc, 1); h.position.set(f.x, f.y + (f.k ? 0 : 0.04), f.z);
+    h.userData = { tag: 'shore-glow', base: f.k ? 0.95 : 0.8, ph: i * 1.7, sc };
+    dress.add(h); halos.push(h);
+  });
+
+  // glints in the grass: tiny dew/firefly sparks that twinkle on the bank and around the lights
+  const GL = 420, gpos = new Float32Array(GL * 3), gseed = new Float32Array(GL);
+  for (let i = 0, n = 0; n < GL && i < GL * 6; i++) {
+    let x, z;
+    if (n < 90) { const L = SHORE_LIGHTS[n % SHORE_LIGHTS.length]; const a = rr(0, 6.28), r = rr(0.6, 3.2); x = L.x + Math.cos(a) * r; z = L.z + Math.sin(a) * r; }
+    else { const q = ringPt(rr(NEAR_A0 - 0.2, NEAR_A1 + 0.2), rr(6, 34)); x = q.x; z = q.z; }
+    if (waterDist(x, z) < 0.6) continue;
+    gpos.set([x, groundY(x, z) + rr(0.05, 0.5), z], n * 3); gseed[n] = R(); n++;
+  }
+  const gg = new THREE.BufferGeometry();
+  gg.setAttribute('position', new THREE.BufferAttribute(gpos, 3));
+  gg.setAttribute('aSeed', new THREE.BufferAttribute(gseed, 1));
+  const glints = new THREE.Points(gg, new THREE.ShaderMaterial({
+    uniforms: shoreUniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: /* glsl */`uniform float time; attribute float aSeed; varying float vB; varying float vWarm;
+      void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vB = pow(0.5 + 0.5 * sin(time * (0.7 + aSeed * 2.3) + aSeed * 61.0), 6.0);
+        vWarm = step(0.45, fract(aSeed * 7.0));
+        gl_PointSize = clamp(34.0 / -mv.z, 1.5, 9.0) * (0.4 + vB);
+        gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: /* glsl */`varying float vB; varying float vWarm;
+      void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, d); a *= a;
+        vec3 c = mix(vec3(0.75, 0.85, 1.0), vec3(1.0, 0.82, 0.45), vWarm);
+        gl_FragColor = vec4(c * a * (0.1 + vB * 1.1), 1.0); }`,
+  }));
+  glints.userData.tag = 'grass-glints'; dress.add(glints);
+
+  // leafy trees standing in the shallows at the ends of the beach: a leaning trunk and a crown of
+  // small leaf cards in a few clusters — a broken silhouette, not a blob
+  function leafyTree(seed) {
+    const r = rngOf(seed); const pos = [], nrm = [];
+    const lean = 0.35 + r() * 0.3;                        // leans out over the water (local -z)
+    const trunk = new THREE.CylinderGeometry(0.12, 0.26, 4.2, 6, 4); trunk.deleteAttribute('uv');
+    const tp = trunk.attributes.position;
+    for (let i = 0; i < tp.count; i++) { const y = tp.getY(i) + 2.1; tp.setY(i, y); tp.setZ(i, tp.getZ(i) - lean * y * y * 0.08); }
+    const parts = [trunk.toNonIndexed()];
+    const top = { y: 4.0, z: -lean * 16 * 0.08 };
+    for (let c = 0; c < 6; c++) {
+      const cx = (r() - 0.5) * 2.6, cy = top.y + 0.3 + r() * 1.6, cz = top.z + (r() - 0.5) * 2.4;
+      const rad = 1.0 + r() * 0.7;
+      for (let k = 0; k < 90; k++) {
+        const u = r() * 2 - 1, t = r() * 6.283, rr2 = Math.cbrt(r()) * rad;
+        const px = cx + Math.sqrt(1 - u * u) * Math.cos(t) * rr2, py = cy + u * rr2 * 0.7, pz = cz + Math.sqrt(1 - u * u) * Math.sin(t) * rr2;
+        const ax = r() * 6.28, ay = r() * 6.28, sz = 0.16 + r() * 0.12;
+        const e1 = [Math.cos(ay) * sz, Math.sin(ax) * sz * 0.5, Math.sin(ay) * sz], e2 = [-Math.sin(ay) * sz * 0.6, Math.cos(ax) * sz * 0.6, Math.cos(ay) * sz * 0.6];
+        const v = [[px - e1[0], py - e1[1], pz - e1[2]], [px + e2[0], py + e2[1], pz + e2[2]], [px + e1[0], py + e1[1], pz + e1[2]], [px - e2[0], py - e2[1], pz - e2[2]]];
+        const ny = (py - cy) / rad;                       // outward-ish normal, brighter on top of each cluster
+        const n = [(px - cx) / rad, 0.4 + ny, (pz - cz) / rad];
+        for (const t3 of [[0, 1, 2], [0, 2, 3]]) for (const q of t3) { pos.push(...v[q]); nrm.push(...n); }
+      }
+    }
+    const crown = new THREE.BufferGeometry();
+    crown.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    crown.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+    return { trunk: mergeGeos(parts), crown };
+  }
+  const T = leafyTree(41);
+  const trunks = [], crowns = [];
+  WATER_TREES.forEach((t, i) => {
+    const a = Math.atan2(t.z - LAKE.cz, t.x - LAKE.cx);
+    const ry = Math.PI / 2 - a + (hash2(i, 1.3) - 0.5) * 0.6;   // local -z (the lean) points at the lake centre
+    const y = Math.max(groundY(t.x, t.z), -0.5) - 0.1, v = 0.85 + 0.3 * hash2(i, 7.7);
+    trunks.push({ x: t.x, y, z: t.z, ry, sx: t.h, sy: t.h, sz: t.h, c: [0.17 * v, 0.13 * v, 0.10 * v] });
+    crowns.push({ x: t.x, y, z: t.z, ry, sx: t.h, sy: t.h, sz: t.h, c: [0.11 * v, 0.17 * v, 0.09 * v] });
+  });
+  instanced(dress, T.trunk, dressingMaterial(shoreUniforms, 0.004, false), trunks, 'tree');
+  instanced(dress, T.crown, dressingMaterial(shoreUniforms, 0.006, true), crowns, 'tree');
+
   return {
     mesh,
-    update(dt, playerPos) { if (playerPos) shoreUniforms.playerPos.value.copy(playerPos); },
+    update(dt, playerPos) {
+      if (playerPos) shoreUniforms.playerPos.value.copy(playerPos);
+      const t = shoreUniforms.time.value;
+      for (const h of halos) { const f = 0.88 + 0.12 * Math.sin(t * 5.7 + h.userData.ph) * Math.sin(t * 2.1 + h.userData.ph * 0.5); h.material.opacity = h.userData.base * f; }
+    },
   };
 }
