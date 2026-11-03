@@ -882,7 +882,7 @@ installStudio({
   probes: ext.probes,
   demos,
   cameras: {
-    lake() { setCam(null); render(0); },
+    lake() { setCam({ pos: [0, 16, 42], target: [0, 0, -60] }); }, // a high view over the beach and the whole lake
     low() { setCam({ pos: [0, 2.3, 23], target: [0, 5.8, -60] }); },
     sky() { setCam({ pos: [0, 1.5, 22], target: [0, 30, -60] }); },
   },
