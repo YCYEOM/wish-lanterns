@@ -36,10 +36,24 @@ export function groundY(x, z) {
   const fade = Math.min(1, d / 6);
   return beach + rise + bumps(x, z) * fade;
 }
+// the little wooden pier just right of the start: it runs from the sand (d = PIER.d0) straight out
+// toward the lake centre into the shallows (d = PIER.d1). Scenery: the character walks around it.
+const PIER = { a: Math.PI / 2 - 0.068, d0: 3.2, d1: -10.5, half: 1.0, deck: 0.52 };
+function pierLocal(x, z) {             // -> { d: signed distance along the pier axis from the waterline, s: sideways offset }
+  const ca = Math.cos(PIER.a), sa = Math.sin(PIER.a);
+  const r0 = shoreRadius(PIER.a);
+  const dx = x - (LAKE.cx + ca * r0), dz = z - (LAKE.cz + sa * r0);
+  return { d: dx * ca + dz * sa, s: -dx * sa + dz * ca };
+}
+function onPier(x, z, m = 0) {
+  const p = pierLocal(x, z);
+  return p.d < PIER.d0 + m && p.d > PIER.d1 - m && Math.abs(p.s) < PIER.half + m;
+}
 // the near shore: the arc of beach facing the viewer, roomy enough to wander
 export function walkable(x, z) {
   const d = waterDist(x, z);
   if (d < 0.5 || d > 30) return false;
+  if (onPier(x, z, 0.25)) return false;
   return z > -40;
 }
 export function nearestShore(x, z, d = 0.8) {
@@ -59,7 +73,7 @@ function hash2(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; r
 // shared lighting for the shore and every dressing mesh: dim moon from the upper left, a cool sky
 // fill, the character's warm lantern pooling on whatever is near it, fog toward the horizon
 const LIGHT_GLSL = /* glsl */`
-  uniform vec3 camPos; uniform vec3 playerPos; uniform float time;
+  uniform vec3 camPos; uniform vec3 playerPos; uniform float time; uniform vec3 pierLamp;
   vec3 shoreLight(vec3 col, vec3 N, vec3 W, float ao){
     vec3 L = normalize(vec3(-0.4, 0.8, -0.45));
     float diff = max(dot(N, L), 0.0);
@@ -69,6 +83,9 @@ const LIGHT_GLSL = /* glsl */`
     float pd = length(toP);
     float lamb = 0.35 + 0.65 * max(dot(N, toP / max(pd, 1e-3)), 0.0);
     lit += col * vec3(1.6, 0.9, 0.42) * exp(-pd * pd * 0.12) * 1.1 * lamb;
+    vec3 toL = pierLamp - W; float ld = length(toL);
+    float flick = 0.9 + 0.1 * sin(time * 6.1) * sin(time * 2.3 + 1.0);
+    lit += col * vec3(1.5, 0.78, 0.34) * exp(-ld * ld * 0.09) * 0.95 * flick * (0.3 + 0.7 * max(dot(N, toL / max(ld, 1e-3)), 0.0));
     return lit;
   }
   vec3 shoreFog(vec3 lit, vec3 W){
@@ -78,7 +95,7 @@ const LIGHT_GLSL = /* glsl */`
   }`;
 
 // one lit material for the instanced dressing: per-instance tint (aCol), optional wind sway on height
-function dressingMaterial(u, sway, doubleSide) {
+function dressingMaterial(u, sway, doubleSide, grain = false) {
   return new THREE.ShaderMaterial({
     uniforms: u, side: doubleSide ? THREE.DoubleSide : THREE.FrontSide, fog: false,
     vertexShader: /* glsl */`
@@ -100,6 +117,8 @@ function dressingMaterial(u, sway, doubleSide) {
         ${doubleSide ? 'N = normalize(N + vec3(0.0, 0.8, 0.0));' : ''}
         float ao = clamp(0.45 + vH * 0.6, 0.45, 1.0);
         vec3 col = vC * (0.75 + 0.35 * clamp(vH, 0.0, 1.5));
+        ${grain ? `{ vec2 g = vW.xz * vec2(1.0, 1.0); float k = sin(dot(vW.xz, vec2(0.8, 23.0)) + sin(vW.x * 3.1 + vW.z * 1.7) * 2.0);
+          col *= 0.86 + 0.14 * k + 0.08 * sin(vW.y * 41.0 + vW.x * 13.0); }` : ''}
         gl_FragColor = vec4(shoreFog(shoreLight(col, N, vW, ao), vW), 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -239,6 +258,7 @@ export function buildShore(scene, uniforms) {
   const shoreUniforms = {
     time: uniforms.time, camPos: uniforms.camPos,
     playerPos: { value: new THREE.Vector3(0, 0, 16) },
+    pierLamp: { value: new THREE.Vector3(0, -50, 0) },
     lakeC: { value: new THREE.Vector3(LAKE.cx, 0, LAKE.cz) },
     lakeR: { value: LAKE.r },
   };
@@ -329,15 +349,20 @@ export function buildShore(scene, uniforms) {
         lit += gloss * fres * vec3(0.10, 0.08, 0.20) * (0.6 + 0.4 * mid);
         vec3 Lm = normalize(vec3(-0.4, 0.8, -0.45));
         vec3 Hm = normalize(V + Lm);
-        lit += gloss * pow(max(dot(N, Hm), 0.0), 60.0) * vec3(0.35, 0.36, 0.5);
+        lit += gloss * pow(max(dot(N, Hm), 0.0), 60.0) * vec3(0.16, 0.16, 0.24) * mid;
 
         // --- foam: the frothy lip of the running wave plus a broken line at the waterline
-        float froth = fbm(vec2(a * 260.0, d * 3.0 - time * 0.4));
-        float lip = exp(-pow((d - reach) / 0.18, 2.0)) * smoothstep(0.35, 0.65, froth + 0.15 * wave);
-        float edge = (1.0 - smoothstep(0.0, 0.35, d)) * (0.55 + 0.45 * sin(time * 1.3 + a * 40.0)) * smoothstep(0.3, 0.6, froth);
+        // lace: a cellular-ish net of thin foam strands, drifting with the backwash
+        vec2 fp = p * 2.2 + vec2(0.0, -time * 0.25);
+        float lace = abs(n21(fp) - n21(fp * 1.9 + 4.0));
+        lace = 1.0 - smoothstep(0.0, 0.09, lace);                         // thin strands where the two fields cross
+        float patchy = smoothstep(0.35, 0.75, fbm(vec2(a * 70.0 + time * 0.05, time * 0.08)));   // foam comes and goes along the shore
+        float lipBand = smoothstep(reach - 0.55, reach - 0.05, d) * (1.0 - smoothstep(reach - 0.05, reach + 0.08, d));
+        float lip = lipBand * (0.35 + 0.65 * lace) * (0.4 + 0.6 * patchy) * (0.35 + 0.65 * wave);
+        float edge = (1.0 - smoothstep(0.0, 0.3, d)) * smoothstep(0.0, 0.05, d + 0.02) * lace * patchy * 0.6;
         vec2 bc = p * 9.0 + vec2(0.0, floor(time * 0.8) * 3.7);
-        float bubbles = step(0.72, h21(floor(bc))) * (1.0 - smoothstep(0.08, 0.2, length(fract(bc) - 0.5))) * washK * smoothstep(reach - 0.8, reach, d) * 0.35;
-        lit += vec3(0.42, 0.44, 0.55) * (lip * 1.2 + edge * 0.8 + bubbles);
+        float bubbles = step(0.78, h21(floor(bc))) * (1.0 - smoothstep(0.06, 0.16, length(fract(bc) - 0.5))) * washK * smoothstep(reach - 0.8, reach, d) * 0.25;
+        lit += vec3(0.21, 0.22, 0.28) * (lip + edge + bubbles);
 
         gl_FragColor = vec4(shoreFog(lit, vW), 1.0);
         #include <tonemapping_fragment>
@@ -361,6 +386,7 @@ export function buildShore(scene, uniforms) {
     const near = a > NEAR_A0 - 0.3 && a < NEAR_A1 + 0.3;
     const d = near ? 4 + Math.pow(R(), 1.6) * 46 : rr(3, 40);
     const q = ringPt(a, d);
+    if (onPier(q.x, q.z, 1.2)) continue;
     const bankEdge = 9 + 6 * hash2(q.x * 0.07, q.z * 0.07);
     if (d < bankEdge && R() > 0.3) continue;           // only a few strays on the open sand
     const s = d < bankEdge ? rr(0.6, 1.0) : rr(0.5, 1.0);
@@ -376,6 +402,7 @@ export function buildShore(scene, uniforms) {
   for (let i = 0; i < 120; i++) {                        // pebbles and small stones on the walkable sand, thicker at the wet band
     const a = rr(NEAR_A0, NEAR_A1), d = i % 2 ? rr(0.2, 4) : rr(0.6, 22);
     const q = ringPt(a, d); const s = rr(0.12, 0.38);
+    if (onPier(q.x, q.z, 1.2)) continue;
     rocks.push({ x: q.x, y: groundY(q.x, q.z) - s * 0.25, z: q.z, rx: rr(-0.3, 0.3), ry: rr(0, 6.28), sx: s, sy: s, sz: s * rr(0.7, 1.2), c: rockCol() });
   }
   const clusters = [[NEAR_A0 - 0.06, 1], [NEAR_A1 + 0.06, 1], [1.33, -1.4], [1.86, -1.2], [1.12, 2.5], [2.05, 2.0], [0.62, 0.5], [2.5, 0.8],
@@ -385,6 +412,7 @@ export function buildShore(scene, uniforms) {
     for (let i = 0; i < n; i++) {
       const a = ca + rr(-0.025, 0.025), d = cd + rr(-1.4, 1.4);
       const q = ringPt(a, d); const big = i === 0 ? rr(0.9, 1.5) : rr(0.3, 0.8);
+      if (onPier(q.x, q.z, 1.2)) continue;
       const s = big * (Math.abs(a - Math.PI / 2) < 0.6 && d > 0.5 ? 0.55 : 1);  // keep the sand near the start open
       rocks.push({ x: q.x, y: Math.max(groundY(q.x, q.z), -0.6) - s * 0.15, z: q.z, rx: rr(-0.25, 0.25), ry: rr(0, 6.28), rz: rr(-0.2, 0.2), sx: s * rr(0.9, 1.4), sy: s, sz: s, c: rockCol() });
     }
@@ -396,6 +424,7 @@ export function buildShore(scene, uniforms) {
   for (let i = 0; i < 16; i++) {
     const a = i < 12 ? rr(NEAR_A0 + 0.05, NEAR_A1 - 0.05) : rr(0, Math.PI * 2);
     const d = rr(1.6, 6.5); const q = ringPt(a, d);
+    if (onPier(q.x, q.z, 1.2)) continue;
     const len = rr(1.4, 3.6), th = rr(0.7, 1.3), v = rr(0.85, 1.15);
     wood.push({ x: q.x, y: groundY(q.x, q.z) + 0.06 * th, z: q.z, ry: -a - Math.PI / 2 + rr(-0.5, 0.5), rz: rr(-0.05, 0.05), sx: len, sy: th, sz: th, c: [0.38 * v, 0.33 * v, 0.28 * v] });
   }
@@ -407,6 +436,7 @@ export function buildShore(scene, uniforms) {
     const a = rr(0, Math.PI * 2);
     if (Math.abs(a - Math.PI / 2) < 0.12) continue;
     const d = rr(-3.2, 0.4); const q = ringPt(a, d);
+    if (onPier(q.x, q.z, 0.4)) continue;
     const s = rr(0.9, 2.0), g = rr(0.8, 1.15);
     reeds.push({ x: q.x, y: Math.max(groundY(q.x, q.z), -0.35), z: q.z, ry: rr(0, 6.28), sx: rr(0.8, 1.3), sy: s, sz: rr(0.8, 1.3), c: [0.17 * g, 0.21 * g, 0.10 * g] });
   }
@@ -426,10 +456,67 @@ export function buildShore(scene, uniforms) {
     const a = rr(0, Math.PI * 2), d = rr(2.5, 40); const q = ringPt(a, d);
     if (walkable(q.x, q.z) || q.z > -42) continue;
     const s = rr(0.5, 1.1), v = rr(0.8, 1.2);
-    bushes.push({ x: q.x, y: groundY(q.x, q.z) - 0.2 * s, z: q.z, ry: rr(0, 6.28), sx: s * 1.3, sy: s * 0.8, sz: s * 1.2, c: [0.10 * v, 0.15 * v, 0.08 * v] });
+    bushes.push({ x: q.x, y: groundY(q.x, q.z) - 0.05, z: q.z, ry: rr(0, 6.28), sx: s * 1.3, sy: s * 1.1, sz: s * 1.2, c: [0.13 * v, 0.20 * v, 0.09 * v] });
   }
   instanced(dress, canopyGeometry(5), dressingMaterial(shoreUniforms, 0.015, false), trees, 'tree');
-  instanced(dress, rockGeometry(17), dressingMaterial(shoreUniforms, 0.04, false), bushes, 'bush');
+  instanced(dress, bladeTuft(34, 1.5, 1.1, 0.11, 17), dressingMaterial(shoreUniforms, 0.05, true), bushes, 'bush');
+
+  // ---------------------------------------------------------------- the wooden pier
+  // planks across two stringers on paired pilings, a lantern post at the far end
+  const ca = Math.cos(PIER.a), sa = Math.sin(PIER.a), r0 = shoreRadius(PIER.a);
+  const at = (d, side) => ({ x: LAKE.cx + ca * (r0 + d) - sa * side, z: LAKE.cz + sa * (r0 + d) + ca * side });
+  const ryAcross = -PIER.a - Math.PI / 2;           // box local x runs across the pier, local z along it
+  const PR = rngOf(777); const pr = (a, b) => a + (b - a) * PR();
+  const woodC = (k = 1) => { const v = pr(0.78, 1.12) * k; return [0.36 * v, 0.25 * v, 0.16 * v]; };
+  const planks = [], beams = [], piles = [];
+  for (let d = PIER.d0 - 0.15; d > PIER.d1; d -= 0.34) {
+    if (PR() < 0.025 && d < 0) continue;            // one or two missing boards
+    const q = at(d, pr(-0.03, 0.03));
+    planks.push({ x: q.x, y: PIER.deck + pr(-0.012, 0.012), z: q.z, ry: ryAcross + pr(-0.025, 0.025), rz: pr(-0.015, 0.015),
+      sx: PIER.half * 2 * pr(0.94, 1.04), sy: 0.07, sz: 0.29, c: woodC() });
+  }
+  const len = PIER.d0 - PIER.d1, mid = (PIER.d0 + PIER.d1) / 2;
+  for (const side of [-0.72, 0.72]) {
+    const q = at(mid, side);
+    beams.push({ x: q.x, y: PIER.deck - 0.13, z: q.z, ry: ryAcross, sx: 0.14, sy: 0.18, sz: len, c: woodC(0.7) });
+  }
+  // cross bracing under the deck so the edge reads as a structure, not a slab
+  for (let d = PIER.d0 - 0.6; d > PIER.d1; d -= 2.6) {
+    const q = at(d, 0);
+    beams.push({ x: q.x, y: PIER.deck - 0.24, z: q.z, ry: ryAcross, sx: PIER.half * 2.05, sy: 0.12, sz: 0.14, c: woodC(0.65) });
+  }
+  for (let d = PIER.d0 - 0.6; d > PIER.d1 - 0.1; d -= 2.6) for (const side of [-0.9, 0.9]) {
+    const q = at(d, side); const top = PIER.deck + (d < PIER.d1 + 2.6 ? 0.55 : 0.12);
+    const bottom = Math.min(groundY(q.x, q.z), 0) - 0.6;
+    piles.push({ x: q.x, y: (top + bottom) / 2, z: q.z, ry: pr(0, 6), rz: pr(-0.03, 0.03), sx: 1, sy: top - bottom, sz: 1, c: woodC(0.6) });
+  }
+  // a lantern post at the end, the place to send lanterns off from
+  const lampQ = at(PIER.d1 + 0.45, 0.9);
+  piles.push({ x: lampQ.x, y: PIER.deck + 0.85, z: lampQ.z, ry: 0, sx: 0.8, sy: 1.7, sz: 0.8, c: woodC(0.55) });
+  const armQ = at(PIER.d1 + 0.45, 0.62);
+  beams.push({ x: armQ.x, y: PIER.deck + 1.62, z: armQ.z, ry: ryAcross, sx: 0.62, sy: 0.07, sz: 0.07, c: woodC(0.55) });
+  const boxGeo = new THREE.BoxGeometry(1, 1, 1); boxGeo.deleteAttribute('uv');
+  const pileGeo = new THREE.CylinderGeometry(0.1, 0.12, 1, 8); pileGeo.deleteAttribute('uv');
+  const woodMat = dressingMaterial(shoreUniforms, 0, false, true);
+  instanced(dress, boxGeo, woodMat, planks, 'pier');
+  instanced(dress, boxGeo.clone(), woodMat, beams, 'pier');
+  instanced(dress, pileGeo, woodMat, piles, 'pier');
+  const lampAt = at(PIER.d1 + 0.45, 0.4);
+  const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.3, 8), new THREE.MeshBasicMaterial({ color: 0xffb35c }));
+  lamp.position.set(lampAt.x, PIER.deck + 1.42, lampAt.z); lamp.userData.tag = 'pier-lamp';
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.16, 0.08, 8), new THREE.MeshBasicMaterial({ color: 0x1a120c }));
+  cap.position.set(0, 0.19, 0); lamp.add(cap);
+  dress.add(lamp);
+  // a soft halo around the lamp (additive sprite drawn from a tiny generated gradient, no canvas needed)
+  const N = 32, px = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const r = Math.hypot(x - N / 2 + 0.5, y - N / 2 + 0.5) / (N / 2); const v = Math.max(0, 1 - r); const k = v * v;
+    px.set([255, 190, 120, Math.round(255 * k)], (y * N + x) * 4);
+  }
+  const haloTex = new THREE.DataTexture(px, N, N); haloTex.needsUpdate = true;
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.85 }));
+  halo.scale.set(3.4, 3.4, 1); lamp.add(halo); halo.userData.tag = 'pier-lamp';
+  shoreUniforms.pierLamp.value.set(lampAt.x, PIER.deck + 1.3, lampAt.z);
 
   return {
     mesh,
