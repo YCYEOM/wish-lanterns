@@ -67,3 +67,30 @@ The pier is built inside `buildShore`; the `PIER` constants sit at the top of sh
   - New ragged dark wrack line (weed and twigs) at the high-water mark.
   - The dry sand is about 20% darker, so the night and the warm pools read.
 - Reeds: 70 reed beds, each a centre with 4–9 clumps; 44 of the beds are on the near arc. This replaces the 110 scattered single clumps.
+
+# shore-2 — iteration 4
+
+## The move: clustered small stuff along the whole arc
+- 640 cluster centres, 520 of them on the near arc.
+- Bands: 46% at the waterline (d 0.15–3.2), 40% at the foot of the bank (d 6–13), 14% in the open middle.
+- Each cluster is one kind:
+  - pebble groups: 6–15 icosa-0 pebbles in grey, brown, basalt and quartz;
+  - shells: ribbed fan geometry, only at d < 4.5;
+  - forked twigs;
+  - sedge/grass clumps: straw-coloured near the water, green on the bank;
+  - small driftwood bits.
+- Instance tags: `pebbles`, `shells`, `twigs`, `grass`, `driftwood`. Clusters skip the pier and the lights.
+
+## Ledger fixes
+- Shore glow sparse: `SHORE_LIGHTS` grew from 11 to 19 and `lamps[]` from 12 to 20.
+  - Added a stone lantern at x=7.5 and a cairn at x=2.6 (d 8.9, in the cover's lower right).
+  - Added tea-light groups (k=2): 3–5 wax candles, each with a flame and a small halo. They're at (-2.6, d 8.6), (3.2, d 1.7), (-9.5, d 6.4), (-12.5, d 1.8) and (16.5, d 7.5), plus a stone lantern at x=-18.5, d 9.5.
+  - Tea-lights don't block walking.
+  - Lamp strengths were lowered (1.05, 0.65, 0.55) so the frame stays night (mean luma about 77).
+- Grass not visible in the cover or default views: grass clumps now sit at d 6–13, inside the cover camera's ground footprint (which only reaches d≈8.4). The shader bank edge also moved closer (gEdge 7.2–13.7), with grass tongues from d≈3. Glints still cluster around the lights.
+- Hard waterline and chalky foam:
+  - The wash zone is now a thin dark water film that mirrors the sky and fades into the lake.
+  - The edge foam is a soft glow instead of lace scribbles.
+  - Lace strands are thicker and softer; foam is a little dimmer.
+- Checked in the "low" camera (≈ the cover framing) and in the harness path. The walker ends at waterDist 0.67.
+- Not done: ledger 5 (pier out of the default view). It conflicts with the lanterns the cover demo poses at x 2.6–7.5, so the pier stays at x≈15 where it frames the right edge.

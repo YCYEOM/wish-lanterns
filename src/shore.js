@@ -51,6 +51,9 @@ const SHORE_LIGHTS = [
   { x: -6, d: 3.0, k: 1 }, { x: 5.5, d: 5.2, k: 0 }, { x: -15, d: 5.5, k: 0 }, { x: -22, d: 3.5, k: 1 },
   { x: 11.5, d: 2.2, k: 1 }, { x: 24, d: 4.0, k: 0 }, { x: 33, d: 3.0, k: 1 }, { x: -37, d: 4.5, k: 1 },
   { x: -30, d: 9.0, k: 0 }, { x: 46, d: 5.0, k: 1 }, { x: -50, d: 3.5, k: 0 },
+  // a lantern-lit stretch around the start: tea-light groups (k: 2) and more lanterns in view
+  { x: 7.5, d: 4.4, k: 1 }, { x: -2.6, d: 8.6, k: 2 }, { x: 3.2, d: 1.7, k: 2 }, { x: -9.5, d: 6.4, k: 2 },
+  { x: 2.6, d: 8.9, k: 0 }, { x: -12.5, d: 1.8, k: 2 }, { x: 16.5, d: 7.5, k: 2 }, { x: -18.5, d: 9.5, k: 1 },
 ].map(L => { const p = ringAt(atX(L.x, L.d), L.d); return { x: p.x, z: p.z, k: L.k }; });
 // trees standing in the shallows at the ends of the start beach: lake-side of anywhere the character
 // can stand, so the follow camera (always land-side) never looks through them
@@ -60,7 +63,7 @@ const WATER_TREES = [
 ].map(T => { const p = ringAt(atX(T.x, T.d), T.d); return { ...T, x: p.x, z: p.z }; });
 function nearLight(x, z, r) { for (const L of SHORE_LIGHTS) if ((x - L.x) ** 2 + (z - L.z) ** 2 < r * r) return true; return false; }
 function blocked(x, z) {
-  for (const L of SHORE_LIGHTS) { const dx = x - L.x, dz = z - L.z; if (dx * dx + dz * dz < (L.k ? 0.55 : 0.4) ** 2) return true; }
+  for (const L of SHORE_LIGHTS) { const dx = x - L.x, dz = z - L.z; if (L.k < 2 && dx * dx + dz * dz < (L.k ? 0.55 : 0.4) ** 2) return true; }   // tea-lights (k 2) are stepped over
   return false;
 }
 function pierLocal(x, z) {             // -> { d: signed distance along the pier axis from the waterline, s: sideways offset }
@@ -97,7 +100,7 @@ function hash2(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; r
 // shared lighting for the shore and every dressing mesh: dim moon from the upper left, a cool sky
 // fill, the character's warm lantern pooling on whatever is near it, fog toward the horizon
 const LIGHT_GLSL = /* glsl */`
-  uniform vec3 camPos; uniform vec3 playerPos; uniform float time; uniform vec3 pierLamp; uniform vec4 lamps[12];
+  uniform vec3 camPos; uniform vec3 playerPos; uniform float time; uniform vec3 pierLamp; uniform vec4 lamps[20];
   vec3 shoreLight(vec3 col, vec3 N, vec3 W, float ao){
     vec3 L = normalize(vec3(-0.4, 0.8, -0.45));
     float diff = max(dot(N, L), 0.0);
@@ -111,7 +114,7 @@ const LIGHT_GLSL = /* glsl */`
     float flick = 0.9 + 0.1 * sin(time * 6.1) * sin(time * 2.3 + 1.0);
     lit += col * vec3(1.5, 0.78, 0.34) * exp(-ld * ld * 0.09) * 0.95 * flick * (0.3 + 0.7 * max(dot(N, toL / max(ld, 1e-3)), 0.0));
     // the stone lanterns and candle cairns along the beach: warm pools on the sand around each
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 20; i++) {
       vec4 Lp = lamps[i]; if (Lp.w <= 0.0) continue;
       vec3 tl = Lp.xyz - W; float dl = length(tl);
       float fl = 0.88 + 0.12 * sin(time * (5.3 + float(i)) + float(i) * 2.1) * sin(time * 1.9 + float(i));
@@ -159,8 +162,8 @@ function dressingMaterial(u, sway, doubleSide, grain = false) {
 }
 
 // ---- dressing geometry (all built from seeded numbers)
-function rockGeometry(seed) {
-  const g = new THREE.IcosahedronGeometry(1, 1).toNonIndexed();
+function rockGeometry(seed, detail = 1) {
+  const g = new THREE.IcosahedronGeometry(1, detail).toNonIndexed();
   const p = g.attributes.position; const r = rngOf(seed);
   const k = [r() * 6, r() * 6, r() * 6];
   for (let i = 0; i < p.count; i++) {
@@ -291,7 +294,7 @@ export function buildShore(scene, uniforms) {
     time: uniforms.time, camPos: uniforms.camPos,
     playerPos: { value: new THREE.Vector3(0, 0, 16) },
     pierLamp: { value: new THREE.Vector3(0, -50, 0) },
-    lamps: { value: Array.from({ length: 12 }, () => new THREE.Vector4(0, -50, 0, 0)) },
+    lamps: { value: Array.from({ length: 20 }, () => new THREE.Vector4(0, -50, 0, 0)) },
     lakeC: { value: new THREE.Vector3(LAKE.cx, 0, LAKE.cz) },
     lakeR: { value: LAKE.r },
   };
@@ -355,12 +358,12 @@ export function buildShore(scene, uniforms) {
         // the wrack line: a ragged dark seam of weed and twigs where the high water stopped
         float wr = exp(-pow((d - wetLine - 0.2) / 0.22, 2.0)) * smoothstep(0.4, 0.65, n21(p * 2.6 + 11.0));
         col = mix(col, vec3(0.045, 0.04, 0.03), wr * 0.75);
-        col = mix(col, sandWet, washK);
+        col = mix(col, mix(sandWet, vec3(0.02, 0.025, 0.05), 0.55 * (1.0 - smoothstep(0.0, reach, d))), washK);   // a thin film of water over the sand
         // the grass bank creeps down over the sand in tongues
-        float gEdge = 8.5 + 6.0 * big + 2.0 * mid;
+        float gEdge = 7.2 + 5.0 * big + 1.5 * mid;
         float gK = smoothstep(gEdge, gEdge + 2.5, d);
         float streak = n21(vec2(p.x * 9.0 + p.y * 2.0, p.y * 1.4));
-        float tuftK = smoothstep(0.62, 0.72, fbm(p * 0.9 + 3.0)) * smoothstep(4.0, 8.0, d);
+        float tuftK = smoothstep(0.6, 0.7, fbm(p * 0.9 + 3.0)) * smoothstep(3.0, 6.0, d);
         gK = max(gK, tuftK * 0.55 * (0.4 + 0.6 * streak));
         vec3 grass = mix(grassA, grassB, mid) * (0.6 + 0.7 * streak);
         grass = mix(grass, soil, smoothstep(0.55, 0.75, fbm(p * 0.35 + 9.0)) * 0.6);
@@ -383,6 +386,7 @@ export function buildShore(scene, uniforms) {
         float fres = pow(1.0 - max(V.y, 0.0), 3.0);
         float gloss = max(washK, wetK * 0.45);
         lit += gloss * fres * vec3(0.10, 0.08, 0.20) * (0.6 + 0.4 * mid);
+        lit += washK * (0.35 + 0.65 * fres) * vec3(0.07, 0.06, 0.15) * (1.0 - smoothstep(0.0, reach + 0.2, d));   // the film mirrors the sky, melting into the lake
         vec3 Lm = normalize(vec3(-0.4, 0.8, -0.45));
         vec3 Hm = normalize(V + Lm);
         lit += gloss * pow(max(dot(N, Hm), 0.0), 60.0) * vec3(0.16, 0.16, 0.24) * mid;
@@ -391,14 +395,14 @@ export function buildShore(scene, uniforms) {
         // lace: a cellular-ish net of thin foam strands, drifting with the backwash
         vec2 fp = p * 2.2 + vec2(0.0, -time * 0.25);
         float lace = abs(n21(fp) - n21(fp * 1.9 + 4.0));
-        lace = 1.0 - smoothstep(0.0, 0.09, lace);                         // thin strands where the two fields cross
+        lace = 1.0 - smoothstep(0.0, 0.2, lace);                         // thin strands where the two fields cross
         float patchy = smoothstep(0.35, 0.75, fbm(vec2(a * 70.0 + time * 0.05, time * 0.08)));   // foam comes and goes along the shore
         float lipBand = smoothstep(reach - 0.55, reach - 0.05, d) * (1.0 - smoothstep(reach - 0.05, reach + 0.08, d));
-        float lip = lipBand * (0.35 + 0.65 * lace) * (0.4 + 0.6 * patchy) * (0.35 + 0.65 * wave);
-        float edge = (1.0 - smoothstep(0.0, 0.3, d)) * smoothstep(0.0, 0.05, d + 0.02) * lace * patchy * 0.6;
+        float lip = lipBand * (0.55 + 0.45 * lace) * (0.4 + 0.6 * patchy) * (0.35 + 0.65 * wave);
+        float edge = (1.0 - smoothstep(0.0, 0.35, d)) * (0.4 + 0.6 * patchy) * 0.3;   // a soft glow where the film meets the lake
         vec2 bc = p * 9.0 + vec2(0.0, floor(time * 0.8) * 3.7);
         float bubbles = step(0.78, h21(floor(bc))) * (1.0 - smoothstep(0.06, 0.16, length(fract(bc) - 0.5))) * washK * smoothstep(reach - 0.8, reach, d) * 0.25;
-        lit += vec3(0.21, 0.22, 0.28) * (lip + edge + bubbles);
+        lit += vec3(0.17, 0.18, 0.24) * (lip + edge + bubbles);
 
         gl_FragColor = vec4(shoreFog(lit, vW), 1.0);
         #include <tonemapping_fragment>
@@ -559,6 +563,84 @@ export function buildShore(scene, uniforms) {
   halo.scale.set(3.4, 3.4, 1); lamp.add(halo); halo.userData.tag = 'pier-lamp';
   shoreUniforms.pierLamp.value.set(lampAt.x, PIER.deck + 1.3, lampAt.z);
 
+  // ---------------------------------------------------------------- small stuff, in clusters
+  // pebble groups, shells, twigs, sedge/grass clumps and driftwood bits along the whole arc:
+  // densest along the waterline and at the foot of the bank, sparse over the open middle
+  function shellGeometry() {
+    const pos = [], nrm = [], N = 10;
+    for (let i = 0; i < N; i++) {
+      const a0 = Math.PI * (i / N), a1 = Math.PI * ((i + 1) / N);
+      const h0 = i % 2 ? 0.16 : 0.26, h1 = (i + 1) % 2 ? 0.16 : 0.26;   // ribbed rim
+      const v = [[0, 0.05, -0.15], [Math.cos(a0), h0 * 0.5, Math.sin(a0) * 0.85 - 0.15], [Math.cos(a1), h1 * 0.5, Math.sin(a1) * 0.85 - 0.15]];
+      for (const q of v) { pos.push(...q); nrm.push(q[0] * 0.3, 1, q[2] * 0.3); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+    return g;
+  }
+  function twigGeometry() {
+    const a = new THREE.CylinderGeometry(0.6, 1, 1, 5); a.deleteAttribute('uv'); a.rotateZ(Math.PI / 2);
+    const b = new THREE.CylinderGeometry(0.4, 0.7, 0.35, 4); b.deleteAttribute('uv'); b.translate(0, 0.17, 0); b.rotateZ(-1.1); b.translate(0.12, 0, 0); b.rotateX(Math.PI / 2);
+    const g = mergeGeos([a.toNonIndexed(), b.toNonIndexed()]); g.computeVertexNormals(); return g;
+  }
+  const pebbles = [], shells = [], twigs = [], sedge = [], bits = [];
+  const SR = rngOf(9090); const sr = (a, b) => a + (b - a) * SR();
+  const pebbleCol = () => {
+    const t = SR(), v = sr(0.75, 1.2);
+    if (t < 0.35) return [0.30 * v, 0.29 * v, 0.28 * v];        // grey
+    if (t < 0.6) return [0.34 * v, 0.26 * v, 0.19 * v];         // brown
+    if (t < 0.8) return [0.12 * v, 0.11 * v, 0.11 * v];         // dark basalt
+    return [0.45 * v, 0.43 * v, 0.39 * v];                       // pale quartz
+  };
+  for (let c = 0; c < 640; c++) {
+    const near = c < 520;
+    const ca = near ? sr(NEAR_A0 - 0.15, NEAR_A1 + 0.15) : sr(0, Math.PI * 2);
+    const band = SR();
+    const cd = band < 0.46 ? sr(0.15, 3.2) : band < 0.86 ? sr(6.0, 13.0) : sr(3.2, 6.0);
+    const centre = ringPt(ca, cd);
+    if (onPier(centre.x, centre.z, 0.6)) continue;
+    const kind = SR();
+    const spread = sr(0.35, 1.1);
+    const put = (n, fn) => {
+      for (let i = 0; i < n; i++) {
+        const r = spread * Math.sqrt(SR()), t = SR() * 6.283;
+        const x = centre.x + Math.cos(t) * r, z = centre.z + Math.sin(t) * r;
+        const d = waterDist(x, z);
+        if (d < 0.05 || onPier(x, z, 0.15) || nearLight(x, z, 0.45)) continue;
+        fn(x, z, d);
+      }
+    };
+    if (kind < 0.42) put(6 + Math.floor(SR() * 10), (x, z) => {
+      const s = sr(0.025, 0.11) * (SR() < 0.12 ? 1.8 : 1);
+      pebbles.push({ x, y: groundY(x, z) - s * 0.2, z, rx: sr(-0.3, 0.3), ry: sr(0, 6.28), sx: s * sr(0.9, 1.4), sy: s, sz: s, c: pebbleCol() });
+    });
+    else if (kind < 0.58 && cd < 4.5) put(3 + Math.floor(SR() * 6), (x, z) => {
+      const s = sr(0.035, 0.075), v = sr(0.85, 1.15), pink = SR() < 0.4;
+      shells.push({ x, y: groundY(x, z) + 0.004, z, rx: sr(-0.2, 0.2), ry: sr(0, 6.28), rz: sr(-0.2, 0.2), sx: s, sy: s, sz: s,
+        c: pink ? [0.52 * v, 0.40 * v, 0.37 * v] : [0.54 * v, 0.49 * v, 0.42 * v] });
+    });
+    else if (kind < 0.74) put(2 + Math.floor(SR() * 5), (x, z) => {
+      const len = sr(0.25, 0.85), th = sr(0.012, 0.028), v = sr(0.7, 1.1);
+      twigs.push({ x, y: groundY(x, z) + th * 0.6, z, ry: sr(0, 6.28), rz: sr(-0.06, 0.06), sx: len, sy: th, sz: th, c: [0.26 * v, 0.19 * v, 0.13 * v] });
+    });
+    else if (kind < 0.95) put(3 + Math.floor(SR() * 7), (x, z, d) => {
+      const s = d < 3 ? sr(0.35, 0.7) : sr(0.45, 0.95), g = sr(0.75, 1.15);
+      const dry = d < 3 || SR() < 0.25;                           // sedge by the water is straw-coloured
+      sedge.push({ x, y: groundY(x, z) - 0.02, z, ry: sr(0, 6.28), sx: s, sy: s * sr(0.8, 1.3), sz: s,
+        c: dry ? [0.30 * g, 0.27 * g, 0.15 * g] : [0.17 * g, 0.27 * g, 0.11 * g] });
+    });
+    else put(1 + Math.floor(SR() * 3), (x, z) => {
+      const len = sr(0.35, 0.9), th = sr(0.25, 0.45), v = sr(0.85, 1.15);
+      bits.push({ x, y: groundY(x, z) + 0.05 * th, z, ry: sr(0, 6.28), rz: sr(-0.05, 0.05), sx: len, sy: th, sz: th, c: [0.40 * v, 0.35 * v, 0.29 * v] });
+    });
+  }
+  instanced(dress, rockGeometry(57, 0), dressingMaterial(shoreUniforms, 0, false), pebbles, 'pebbles');
+  instanced(dress, shellGeometry(), dressingMaterial(shoreUniforms, 0, true), shells, 'shells');
+  instanced(dress, twigGeometry(), dressingMaterial(shoreUniforms, 0, false), twigs, 'twigs');
+  instanced(dress, bladeTuft(8, 0.75, 0.32, 0.03, 61), dressingMaterial(shoreUniforms, 0.1, true), sedge, 'grass');
+  instanced(dress, driftwoodGeometry(), dressingMaterial(shoreUniforms, 0, false), bits, 'driftwood');
+
   // ---------------------------------------------------------------- shore lights
   // stone lanterns (tōrō): plinth, post, fire box with paper windows, wide roof and a knob on top
   function stoneLantern() {
@@ -583,28 +665,47 @@ export function buildShore(scene, uniforms) {
     });
     const g = mergeGeos(parts); g.computeVertexNormals(); return g;
   }
-  const stones = [], cairns = [], flames = [];
+  const stones = [], cairns = [], flames = [], candles = [];
   SHORE_LIGHTS.forEach((L, i) => {
     const y = groundY(L.x, L.z) - 0.04; const v = 0.85 + 0.3 * hash2(i, 3.7);
     const item = { x: L.x, y, z: L.z, ry: hash2(i, 9.1) * 6.28, sx: 1, sy: 1, sz: 1, c: [0.20 * v, 0.195 * v, 0.19 * v] };
-    if (L.k) { stones.push(item); flames.push({ x: L.x, y: y + 1.02, z: L.z, k: 1 }); }
-    else { cairns.push(item); flames.push({ x: L.x, y: y + 0.4, z: L.z, k: 0 }); }
-    shoreUniforms.lamps.value[i].set(L.x, y + (L.k ? 0.95 : 0.4), L.z, L.k ? 1.5 : 0.9);
+    if (L.k === 1) { stones.push(item); flames.push({ x: L.x, y: y + 1.02, z: L.z, k: 1 }); }
+    else if (L.k === 0) { cairns.push(item); flames.push({ x: L.x, y: y + 0.4, z: L.z, k: 0 }); }
+    else {                                             // a little group of tea-lights / pillar candles in the sand
+      const n = 3 + Math.floor(hash2(i, 5.5) * 3);
+      for (let c = 0; c < n; c++) {
+        const a = c / n * 6.28 + hash2(i, c), r = 0.12 + 0.2 * hash2(c, i);
+        const cx = L.x + Math.cos(a) * r, cz = L.z + Math.sin(a) * r, h = 0.07 + 0.16 * hash2(c + 3, i);
+        candles.push({ x: cx, y: groundY(cx, cz) + h / 2 - 0.01, z: cz, sx: 1, sy: h / 0.12, sz: 1, c: [0.62, 0.55, 0.45] });
+        flames.push({ x: cx, y: groundY(cx, cz) + h + 0.03, z: cz, k: 2 });
+      }
+    }
+    shoreUniforms.lamps.value[i].set(L.x, y + (L.k === 1 ? 0.95 : 0.4), L.z, L.k === 1 ? 1.05 : L.k === 0 ? 0.65 : 0.55);
   });
   instanced(dress, stoneLantern(), dressingMaterial(shoreUniforms, 0, false), stones, 'stone-lantern');
   instanced(dress, cairn(), dressingMaterial(shoreUniforms, 0, false), cairns, 'candle-cairn');
+  const waxGeo = new THREE.CylinderGeometry(0.045, 0.05, 0.12, 8); waxGeo.deleteAttribute('uv');
+  instanced(dress, waxGeo, dressingMaterial(shoreUniforms, 0, false), candles, 'tea-lights');
   // the flames: a lit paper core in each lantern, a candle stub on each cairn, both with a soft halo
   const coreGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.24, 6);
   const candleGeo = new THREE.CylinderGeometry(0.035, 0.04, 0.12, 6);
   const coreMat = new THREE.MeshBasicMaterial({ color: 0xffa648 });
+  const flameGeo = new THREE.SphereGeometry(0.025, 6, 4); flameGeo.scale(1, 1.8, 1);
+  const flameMat = new THREE.MeshBasicMaterial({ color: 0xffd28a });
   const halos = [];
   flames.forEach((f, i) => {
-    const m = new THREE.Mesh(f.k ? coreGeo : candleGeo, coreMat);
-    m.position.set(f.x, f.y + (f.k ? 0 : -0.06), f.z); m.userData.tag = f.k ? 'stone-lantern' : 'candle-cairn';
-    dress.add(m);
-    const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: f.k ? 0.95 : 0.8 }));
-    const sc = f.k ? 2.8 : 1.5; h.scale.set(sc, sc, 1); h.position.set(f.x, f.y + (f.k ? 0 : 0.04), f.z);
-    h.userData = { tag: 'shore-glow', base: f.k ? 0.95 : 0.8, ph: i * 1.7, sc };
+    const big = f.k === 1, tea = f.k === 2;
+    if (!tea) {
+      const m = new THREE.Mesh(big ? coreGeo : candleGeo, coreMat);
+      m.position.set(f.x, f.y + (big ? 0 : -0.06), f.z); m.userData.tag = big ? 'stone-lantern' : 'candle-cairn';
+      dress.add(m);
+    } else {
+      const m = new THREE.Mesh(flameGeo, flameMat); m.position.set(f.x, f.y, f.z); m.userData.tag = 'tea-lights'; dress.add(m);
+    }
+    const base = big ? 0.95 : tea ? 0.6 : 0.8;
+    const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: base }));
+    const sc = big ? 2.8 : tea ? 0.75 : 1.5; h.scale.set(sc, sc, 1); h.position.set(f.x, f.y + (big || tea ? 0 : 0.04), f.z);
+    h.userData = { tag: 'shore-glow', base, ph: i * 1.7, sc };
     dress.add(h); halos.push(h);
   });
 
