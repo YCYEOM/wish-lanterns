@@ -1,5 +1,12 @@
 {
   "name": "game-",
   "title": "힐링 오락거리",
-  "createdAt": "2026-11-02T04:52:18.194Z"
+  "createdAt": "2026-11-02T04:52:18.194Z",
+  "game": {
+    "kind": "third-person",
+    "hud": true,
+    "mouseLook": true,
+    "keyboardMove": true,
+    "declaredBy": "plan"
+  }
 }
