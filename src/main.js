@@ -467,7 +467,8 @@ function updateCamera(dt) {
     pointer.sx += (pointer.x - pointer.sx) * Math.min(1, dt * 1.5);
     pointer.sy += (pointer.y - pointer.sy) * Math.min(1, dt * 1.5);
     const dy = pointer.sy > 0 ? pointer.sy * 0.35 : pointer.sy; // looking down is gentler than looking up
-    walker.updateCamera(camera, dt, { x: pointer.sx * 0.6, y: dy });
+    // no mouse parallax on the follow camera: it made lanterns slide away from the cursor reaching for them
+    walker.updateCamera(camera, dt, { x: 0, y: 0 });
     followPos.copy(camera.position);
   }
   sky.position.copy(camera.position);
