@@ -468,12 +468,24 @@ function updateCamera(dt) {
     pointer.sy += (pointer.y - pointer.sy) * Math.min(1, dt * 1.5);
     const dy = pointer.sy > 0 ? pointer.sy * 0.35 : pointer.sy; // looking down is gentler than looking up
     walker.updateCamera(camera, dt, { x: pointer.sx * 0.6, y: dy });
+    followPos.copy(camera.position);
   }
   sky.position.copy(camera.position);
   uniforms.camPos.value.copy(camera.position);
 }
 
 const NO_KEYS = new Set();
+// keys from real key events plus any the studio's harness injected (paused, scripted playthroughs)
+const merged = new Set();
+const KEY_ALIAS = { w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD', W: 'KeyW', A: 'KeyA', S: 'KeyS', D: 'KeyD' };
+function heldKeys() {
+  merged.clear();
+  for (const k of keys) merged.add(k);
+  try { const inj = window.__studio?.injectInput?.({}); if (inj) for (const k of inj.keys) { const c = KEY_ALIAS[k] || k; if (MOVE_KEYS.has(c)) merged.add(c); } } catch {}
+  return merged;
+}
+// where the follow camera stands: the "player eyes" for the studio's eye cameras in this third-person game
+const followPos = new THREE.Vector3();
 // a soft ring where a tap sent the character
 const tapMark = new THREE.Mesh(new THREE.RingGeometry(0.25, 0.4, 24), new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0, depthWrite: false, fog: false }));
 tapMark.rotation.x = -Math.PI / 2; scene.add(tapMark);
@@ -484,7 +496,7 @@ function updateTapMark(dt) { tapT = Math.max(0, tapT - dt * 1.2); tapMark.materi
 function update(dt) {
   T += dt;
   uniforms.time.value = T;
-  walker.update(dt, (screen === 'lake' || screen === 'card') ? keys : NO_KEYS, T);
+  walker.update(dt, (screen === 'lake' || screen === 'card') ? heldKeys() : NO_KEYS, T);
   if (beach) beach.update(dt, walker.pos);
   updateTapMark(dt);
   updateLanterns(dt);
@@ -859,7 +871,13 @@ const demos = makeCoverDemos({
 installStudio({
   renderer, scene, camera, canvas,
   input: { pointerLock: false }, // a point-and-tap game: never capture the cursor
-  player: () => ({ x: walker.pos.x, y: walker.pos.y, z: walker.pos.z, yaw: walker.yaw }),
+  // third person: the studio's "player eyes" are the follow camera behind the character, facing the lake
+  eyeHeight: 1.6,
+  player: () => {
+    const f = walker.lakeDir();
+    const p = followPos.lengthSq() ? followPos : walker.pos;
+    return { x: p.x, y: p.y - 1.6, z: p.z, yaw: Math.atan2(-f.x, -f.z) };
+  },
   reset(seed) { reset(seed | 0); },
   probes: ext.probes,
   demos,
@@ -869,7 +887,7 @@ installStudio({
     sky() { setCam({ pos: [0, 1.5, 22], target: [0, 30, -60] }); },
   },
   flow: () => (screen === 'title' ? 'menu' : 'playing'),
-  begin() { startGame(); },
+  begin() { startGame(); $('title').classList.add('hidden'); }, // the studio's clock may be frozen: skip the fade
 });
 // keep our extra helpers next to the contract's own verbs
 window.__studio.screenOf = (id) => { const L = lanterns.find(l => l.id === id); if (!L) return null; const v = new THREE.Vector3(L.x, L.y + (L.mode === 'water' ? 0.63 : 0.85), L.z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight, dist: +camera.position.distanceTo(new THREE.Vector3(L.x, L.y, L.z)).toFixed(1) }; };
