@@ -4,6 +4,8 @@ import { Audio } from './audio.js';
 import { Net, invitedLake } from './net.js';
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
+import * as shore from './shore.js';
+import { createWalker } from './walker.js';
 
 // ---------------------------------------------------------------- rng
 let rngState = 1;
@@ -41,9 +43,9 @@ const CAM_BASE = new THREE.Vector3(0, 3.4, 25);
 const CAM_TARGET = new THREE.Vector3(0, 5.5, -60);
 camera.position.copy(CAM_BASE);
 
-// the near shore sits behind the camera, so looking down always shows water, never a bare black bank
-const LAKE = { cx: 0, cz: -65, rx: 80, rz: 108 };
-function lakeE(x, z) { const a = (x - LAKE.cx) / LAKE.rx, b = (z - LAKE.cz) / LAKE.rz; return a * a + b * b; }
+// the lake and its walkable shore live in shore.js; these aliases keep the lantern code unchanged
+const LAKE = { cx: shore.LAKE.cx, cz: shore.LAKE.cz, rx: shore.LAKE.r, rz: shore.LAKE.r };
+const lakeE = shore.lakeE;
 
 const uniforms = { time: { value: 0 }, camPos: { value: new THREE.Vector3() } };
 
@@ -130,24 +132,11 @@ water.renderOrder = -10;
 scene.add(water);
 
 // ---------------------------------------------------------------- static world (built once, fixed seed)
+let beach = null;
 function buildWorld() {
   reseed(7);
-  // ground with a lake-shaped hole
-  const outer = new THREE.Shape();
-  outer.moveTo(-700, -700); outer.lineTo(700, -700); outer.lineTo(700, 700); outer.lineTo(-700, 700); outer.lineTo(-700, -700);
-  const hole = new THREE.Path();
-  const N = 96;
-  for (let i = 0; i <= N; i++) {
-    const a = (i / N) * Math.PI * 2;
-    const w = 1 + 0.035 * Math.sin(a * 5 + 1.3) + 0.02 * Math.sin(a * 11 + 0.4);
-    const x = LAKE.cx + Math.cos(a) * LAKE.rx * w;
-    const z = LAKE.cz + Math.sin(a) * LAKE.rz * w;
-    if (i === 0) hole.moveTo(x, -z); else hole.lineTo(x, -z);
-  }
-  outer.holes.push(hole);
-  const ground = new THREE.Mesh(new THREE.ShapeGeometry(outer, 2), new THREE.MeshBasicMaterial({ color: 0x080a16 }));
-  ground.rotation.x = -Math.PI / 2; ground.position.y = 0.12;
-  scene.add(ground);
+  // the walkable moonlit beach ring around the lake (shore.js)
+  beach = shore.buildShore(scene, uniforms);
 
   // hill rings
   function ring(radius, hBase, hAmp, color, seg) {
@@ -180,14 +169,13 @@ function buildWorld() {
     if (n < 380) { // ring around the lake shore
       const a = rng() * Math.PI * 2, k = rr(1.12, 1.9);
       x = LAKE.cx + Math.cos(a) * LAKE.rx * k; z = LAKE.cz + Math.sin(a) * LAKE.rz * k;
-      if (z > 6 && Math.abs(x) < 26) continue; // keep the view open in front of the camera
-      if (z > 14) continue;
+      if (shore.waterDist(x, z) < 34 && z > -45) continue; // keep the walkable beach and the follow camera clear
     } else { // far shore crowd
       const a = rr(-Math.PI * 0.95, -Math.PI * 0.05), rad = rr(150, 195);
       x = LAKE.cx + Math.cos(a) * rad; z = LAKE.cz + Math.sin(a) * rad;
     }
     const h = rr(5, 12) * (n >= 380 ? 1.6 : 1), r = h * rr(0.22, 0.3);
-    p.set(x, 0, z); s.set(r, h, r);
+    p.set(x, shore.groundY(x, z) - 0.3, z); s.set(r, h, r);
     m4.compose(p, q, s); trees.setMatrixAt(n++, m4);
   }
   scene.add(trees);
@@ -212,7 +200,7 @@ function buildWorld() {
     if (Math.abs(x) < 12 || (Math.abs(x) < 20 && rng() < 0.8)) continue;
     const near = z > 5 ? 1 : 0.6; nReeds++;
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rr(0, Math.PI));
-    p.set(x, 0, z); s.set(rr(0.8, 1.4), rr(0.8, 2.4) * near, 1);
+    p.set(x, Math.max(-0.2, shore.groundY(x, z)) - 0.05, z); s.set(rr(0.8, 1.4), rr(0.8, 2.4) * near, 1);
     m4.compose(p, q, s); reeds.setMatrixAt(nReeds - 1, m4);
   }
   reeds.count = nReeds;
@@ -224,7 +212,7 @@ function buildWorld() {
   for (let i = 0; i < FF; i++) {
     const a = rr(Math.PI * 0.05, Math.PI * 0.95), k = rr(0.85, 1.25);
     fpos[i * 3] = LAKE.cx + Math.cos(a) * LAKE.rx * k;
-    fpos[i * 3 + 1] = rr(0.4, 3.5);
+    fpos[i * 3 + 1] = Math.max(0, shore.groundY(fpos[i * 3], LAKE.cz + Math.sin(a) * LAKE.rz * k)) + rr(0.4, 3.5);
     fpos[i * 3 + 2] = LAKE.cz + Math.sin(a) * LAKE.rz * k;
     for (let j = 0; j < 4; j++) fseed[i * 4 + j] = rng();
   }
@@ -261,6 +249,10 @@ function glowTexture() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 const GLOW = glowTexture();
+const walker = createWalker(scene, shore, GLOW);
+const START = { x: 0, z: 16 };
+walker.reset(START.x, START.z);
+const keys = new Set();
 
 function gradientColors(geo, color, top, bottom) {
   const pos = geo.attributes.position; const cols = new Float32Array(pos.count * 3);
@@ -475,16 +467,26 @@ function updateCamera(dt) {
     pointer.sx += (pointer.x - pointer.sx) * Math.min(1, dt * 1.5);
     pointer.sy += (pointer.y - pointer.sy) * Math.min(1, dt * 1.5);
     const dy = pointer.sy > 0 ? pointer.sy * 0.35 : pointer.sy; // looking down is gentler than looking up
-    camera.position.set(CAM_BASE.x + pointer.sx * 1.4 + Math.sin(T * 0.13) * 0.3, CAM_BASE.y - dy * 0.5 + Math.sin(T * 0.21) * 0.08, CAM_BASE.z);
-    camera.lookAt(CAM_TARGET.x + pointer.sx * 3, CAM_TARGET.y - dy * 2, CAM_TARGET.z);
+    walker.updateCamera(camera, dt, { x: pointer.sx * 0.6, y: dy });
   }
   sky.position.copy(camera.position);
   uniforms.camPos.value.copy(camera.position);
 }
 
+const NO_KEYS = new Set();
+// a soft ring where a tap sent the character
+const tapMark = new THREE.Mesh(new THREE.RingGeometry(0.25, 0.4, 24), new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+tapMark.rotation.x = -Math.PI / 2; scene.add(tapMark);
+let tapT = 0;
+function showTapMark(x, z) { tapMark.position.set(x, shore.groundY(x, z) + 0.05, z); tapT = 1; }
+function updateTapMark(dt) { tapT = Math.max(0, tapT - dt * 1.2); tapMark.material.opacity = tapT * 0.7; tapMark.scale.setScalar(1 + (1 - tapT) * 0.8); }
+
 function update(dt) {
   T += dt;
   uniforms.time.value = T;
+  walker.update(dt, (screen === 'lake' || screen === 'card') ? keys : NO_KEYS, T);
+  if (beach) beach.update(dt, walker.pos);
+  updateTapMark(dt);
   updateLanterns(dt);
   updateSparks(dt);
   updateStar(dt);
@@ -531,7 +533,9 @@ const net = new Net({
     const water = e.mode === 'water';
     let x, z, y;
     if (fresh) { // launched just now by someone on the shore: comes in from the near edge
-      x = (nrnd() - 0.5) * 50; z = water ? 12 : 2; y = water ? 0 : 1;
+      const a = Math.PI / 2 + (nrnd() - 0.5) * 1.0;   // somewhere along the near shore
+      const e2 = shore.nearestShore(LAKE.cx + Math.cos(a) * 50, LAKE.cz + Math.sin(a) * 50, water ? -1.5 : 2);
+      x = e2.x; z = e2.z; y = water ? 0 : 1.2;
     } else {
       for (let i = 0; i < 30; i++) {
         x = (nrnd() * 2 - 1) * LAKE.rx; z = LAKE.cz + (nrnd() * 2 - 1) * LAKE.rz;
@@ -620,16 +624,35 @@ function closePanel(which) {
   if (which === 'compose') { $('compose').classList.add('hidden'); $('launchBtn').classList.remove('hidden'); $('tip').classList.remove('hidden'); screen = 'lake'; }
   else closeCard();
 }
-$('launchBtn').onclick = () => { audio.start(); openCompose(); };
+$('launchBtn').onclick = () => {
+  audio.start();
+  if (walker.state().nearWater) { openCompose(); return; }
+  const e = shore.nearestShore(walker.pos.x, walker.pos.z, 1.2);
+  walker.walkTo(e.x, e.z, () => { if (screen === 'lake') openCompose(); });
+  showTapMark(e.x, e.z);
+  toast('물가로 걸어가는 중…', 1800);
+};
+let nearWaterShown = null;
+function updateLaunchLabel() {
+  const near = walker.state().nearWater;
+  if (near === nearWaterShown) return;
+  nearWaterShown = near;
+  $('launchBtn').textContent = near ? '🏮 여기서 등불 띄우기' : '🏮 물가로 가서 등불 띄우기';
+}
+setInterval(updateLaunchLabel, 200);
 $('send').onclick = () => sendLantern();
 
 function sendLantern() {
   const text = cleanMessage($('msg').value);
   const id = 'm' + Date.now().toString(36);
   const water = composeMode === 'water';
+  // set it down from where the character stands: on the water at its feet, or up from its hands
+  const dir = walker.lakeDir();
+  const at = water ? shore.nearestShore(walker.pos.x, walker.pos.z, -1.4) : { x: walker.pos.x + dir.x * 0.7, z: walker.pos.z + dir.z * 0.7 };
   const L = makeLantern({
     id, mine: true, text, color: composeColor, mode: composeMode,
-    x: 0, y: water ? 0 : 0.6, z: water ? 15 : 9, vx: 0, vz: water ? -2.2 : -0.6, vy: water ? 0 : 0.9,
+    x: at.x, y: water ? 0 : walker.pos.y + 1.3, z: at.z,
+    vx: dir.x * (water ? 2.2 : 0.6), vz: dir.z * (water ? 2.2 : 0.6) + (water ? 0 : 0.25), vy: water ? 0 : 0.9,
     alpha: 0, fadeIn: 1.2, fresh: 6,
   });
   save.mine.push({ id, text, color: composeColor, mode: composeMode });
@@ -725,14 +748,39 @@ canvas.addEventListener('pointerdown', (e) => {
   if (screen === 'title') { startGame(); return; }
   if (screen === 'compose') { closePanel('compose'); return; }
   const L = pickLantern(e.clientX, e.clientY);
-  if (L) openCard(L); else if (screen === 'card') closeCard();
+  if (L) { openCard(L); return; }
+  if (screen === 'card') closeCard();
+  walkToScreenPoint(e.clientX, e.clientY);
 });
+const raycaster = new THREE.Raycaster();
+const waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+function walkToScreenPoint(cx, cy) {
+  const ndc = new THREE.Vector2((cx / window.innerWidth) * 2 - 1, -(cy / window.innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = beach && raycaster.intersectObject(beach.mesh, false)[0];
+  let x, z;
+  if (hit && hit.point.y > -0.02) { x = hit.point.x; z = hit.point.z; }
+  else { // tapped the water: walk to the water's edge in that direction
+    const p = new THREE.Vector3();
+    if (!raycaster.ray.intersectPlane(waterPlane, p)) return;
+    const e = shore.nearestShore(p.x, p.z, 1.0); x = e.x; z = e.z;
+  }
+  walker.walkTo(x, z);
+  showTapMark(x, z);
+}
 window.addEventListener('pointermove', (e) => {
   pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
   pointer.y = (e.clientY / window.innerHeight) * 2 - 1;
   if (screen === 'lake' || screen === 'card') { hovered = pickLantern(e.clientX, e.clientY); canvas.style.cursor = hovered ? 'pointer' : 'default'; }
   else hovered = null;
 });
+const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+window.addEventListener('keydown', (e) => {
+  if (e.target && e.target.tagName === 'INPUT') return;
+  if (MOVE_KEYS.has(e.code)) { keys.add(e.code); if (e.code.startsWith('Arrow')) e.preventDefault(); }
+});
+window.addEventListener('keyup', (e) => keys.delete(e.code));
+window.addEventListener('blur', () => keys.clear());
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { closeCard(); if (screen === 'compose') closePanel('compose'); }
   else if ((e.key === 'Enter' || e.key === ' ') && screen === 'title') startGame();
@@ -755,6 +803,7 @@ function reset(seed = 1) {
   T = 0; star = null; nextStar = 8;
   for (const s of sparks) { scene.remove(s); s.material.dispose(); } sparks.length = 0;
   closeCard();
+  walker.reset(START.x, START.z);
   populate();
   update(0);
 }
@@ -769,7 +818,7 @@ function hudShow(show) { document.body.classList.toggle('hud-off', !show); }
 const ext = {
   probes() {
     return {
-      screen, time: +T.toFixed(3), lanterns: lanterns.length,
+      screen, time: +T.toFixed(3), lanterns: lanterns.length, walker: walker.state(),
       water: lanterns.filter(l => l.mode === 'water').length, sky: lanterns.filter(l => l.mode === 'sky').length,
       launched: save.launched, heartsSent: save.hearts, mine: lanterns.filter(l => l.mine).length,
       selected: selected ? { id: selected.id, text: selected.text } : null,
@@ -810,6 +859,7 @@ const demos = makeCoverDemos({
 installStudio({
   renderer, scene, camera, canvas,
   input: { pointerLock: false }, // a point-and-tap game: never capture the cursor
+  player: () => ({ x: walker.pos.x, y: walker.pos.y, z: walker.pos.z, yaw: walker.yaw }),
   reset(seed) { reset(seed | 0); },
   probes: ext.probes,
   demos,
