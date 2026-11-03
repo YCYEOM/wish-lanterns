@@ -22,3 +22,48 @@ All dressing uses one lit ShaderMaterial with a per-instance `aCol`, discards be
 
 ## Next
 - Ladder step 2: the wooden pier at x≈0..8, z≈10.
+
+# shore-2 — iteration 2
+
+## The move: the wooden pier
+The pier is built inside `buildShore`; the `PIER` constants sit at the top of shore.js.
+- Placement: it runs from the sand (d = +3.2) straight toward the lake centre, out to d = -10.5 at the waterline point x≈5, z≈9.
+- Planks: about 40 boards, each a slightly different colour, height and angle, with one or two boards missing. They sit on two stringers with cross braces underneath.
+- Pilings: paired pilings sink into the water; below y = 0 they are discarded, so they appear to enter the water.
+- Lantern post: at the end there is a post with a warm lamp and an additive halo sprite (DataTexture, no canvas). It also feeds a new `pierLamp` light uniform in `LIGHT_GLSL`, so the deck and the shallows nearby get a flickering warm pool.
+- Wood grain: `dressingMaterial(..., grain=true)` adds grain to the wood.
+- Instances are tagged `pier` and `pier-lamp`.
+- Walking: `walkable()` now also rejects the pier footprint plus a 0.25 m margin, so the character walks around the pier rather than through it. The API is unchanged.
+- Dressing: grass, rocks, driftwood and reeds skip the pier footprint.
+- Harness path: it ends at x≈-3.4, z≈9.7, waterDist 0.67, well clear of the pier at x≈5, so walker-on-beach still passes.
+
+## Ledger fixes
+- Foam (defect-blown): the solid white edge stripe and the full-strength lip are gone. Foam is now thin lace strands from two crossing noise fields. It sits only on the running wave's lip and in patches that come and go along the shore, at about half the old brightness. The moon glint on wet sand was also toned down. In the eye:here capture after the harness inputs, the waterline shows lacy foam, not a band.
+- Black faceted octagons (defect-primitive): not reproduced. In both eye:here and default after the scripted inputs, nothing dark sits near the camera. They were most likely shore rocks or driftwood caught close to a low camera. No change was made for this.
+- Bushes (ledger 4): the grey lumps became spiky leaf shrubs (34 swaying blades, double-sided).
+
+## For the lead (not mine to change)
+- The evenly spaced black poles (ledger 3) are main.js's `reeds` InstancedMesh: flat black bars at 900 instances. My green reed clumps with cattails are separate. Giving main.js's reeds colour, or cutting them back, would remove the "fence of poles".
+
+# shore-2 — iteration 3
+
+## The move: the shore glows
+- `SHORE_LIGHTS`: 6 stone lanterns (tōrō) and 5 candle cairns along the near beach, at d 2–9, x from -50 to +46.
+  - In the default view: a stone lantern at x=-6 (left of the start) and a cairn at x=5.5 (right).
+  - Each has a warm core mesh and an additive halo (now linearly filtered) that flickers in `update()`.
+  - Each feeds a `lamps[12]` vec4 uniform in `LIGHT_GLSL`, giving a warm pool on the sand, the rocks and the dressing. The light fades out within about 1 m of its own core, so the stone body isn't blown out.
+  - The character walks around them via `blocked()` in `walkable()`. Rocks, driftwood and grass stay about 1.3 m away from each.
+  - Tags: `stone-lantern`, `candle-cairn`, `shore-glow`.
+- Glints in the grass: 420 twinkling additive points (`grass-glints`), mixed cool and warm. Most sit on the bank; 90 cluster around the lights.
+
+## Ledger fixes
+- Lanterns overlapping the pier (demo:genex-cover): the pier moved from x≈5 to a root at x≈15 (`PIER.a = π/2 - 0.19`). From the cover camera at (0, 2.3, 23), the posed lanterns at (2.6, 9.5) and (7.5, 4) sit at 11° and 21.5°. The pier now spans 25° and beyond. The demo itself can't be run from my tools: capture and computer report demo:genex-cover as unregistered. I checked with the "low" camera, which frames almost the same view: the pier is at the right edge with no posed lantern on it.
+- Nothing framing the beach sides: added 7 leafy trees standing in the shallows at the ends of the beach (x -11.5, -16.5, -27, 22, 30, -44, 52; `WATER_TREES`).
+  - Each has a leaning trunk and a crown of about 540 small leaf cards in 6 clusters, so the silhouette is broken rather than a blob.
+  - They stand lake-side of anywhere the character can go, so the follow camera (always land-side) never looks through them.
+  - The tree at x=-11.5 frames the left of default, eye:here and low; the pier frames the right.
+- Wet band:
+  - The damp sand is much darker, with a crisp edge.
+  - New ragged dark wrack line (weed and twigs) at the high-water mark.
+  - The dry sand is about 20% darker, so the night and the warm pools read.
+- Reeds: 70 reed beds, each a centre with 4–9 clumps; 44 of the beds are on the near arc. This replaces the 110 scattered single clumps.
