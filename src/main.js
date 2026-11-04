@@ -781,7 +781,8 @@ function walkToScreenPoint(cx, cy) {
   else { // tapped the water: walk to the water's edge in that direction
     const p = new THREE.Vector3();
     if (!raycaster.ray.intersectPlane(waterPlane, p)) return;
-    const e = shore.nearestShore(p.x, p.z, 1.0); x = e.x; z = e.z;
+    if (shore.pierLaunchPoint(walker.pos.x, walker.pos.z)) { x = p.x; z = p.z; }  // on the pier: walkTo clamps it onto the deck
+    else { const e = shore.nearestShore(p.x, p.z, 1.0); x = e.x; z = e.z; }
   }
   walker.walkTo(x, z);
   showTapMark(x, z);

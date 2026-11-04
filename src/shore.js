@@ -77,9 +77,15 @@ function onPier(x, z, m = 0) {
   const p = pierLocal(x, z);
   return p.d < PIER.d0 + m && p.d > PIER.d1 - m && Math.abs(p.s) < PIER.half + m;
 }
+// where the character may stand on the pier: inside the railing posts and short of the end lamp,
+// so the body never hangs over the edge or past the pier's end
+function onDeck(x, z) {
+  const p = pierLocal(x, z);
+  return p.d < PIER.d0 + 0.15 && p.d > PIER.d1 + 1.0 && Math.abs(p.s) < PIER.half - 0.32;
+}
 // the near shore: the arc of beach facing the viewer, roomy enough to wander
 export function walkable(x, z) {
-  if (onPier(x, z, 0.15)) return true;                    // out along the pier deck, over the shallows
+  if (onDeck(x, z)) return true;                          // out along the pier deck, over the shallows
   const d = waterDist(x, z);
   if (d < 0.5 || d > 30) return false;
   if (blocked(x, z)) return false;                        // stone lanterns and cairns
