@@ -30,6 +30,10 @@ function bumps(x, z) {
 }
 export function groundY(x, z) {
   if (onPier(x, z, 0.15)) return PIER.deck + 0.04;       // standing on the planks
+  return terrainY(x, z);
+}
+// the ground itself, under the pier too (the beach mesh and dressing sit on this; only feet stand on the deck)
+function terrainY(x, z) {
   const d = waterDist(x, z);
   if (d < 0) return Math.max(-2.5, d * 0.12) - 0.05;
   const beach = 0.9 * (1 - Math.exp(-d / 7));            // gentle sand slope out of the water
@@ -329,7 +333,7 @@ export function buildShore(scene, uniforms) {
       const a = (i / SEG) * Math.PI * 2;
       const r = shoreRadius(a) + off;
       const x = LAKE.cx + Math.cos(a) * r, z = LAKE.cz + Math.sin(a) * r;
-      pos.push(x, groundY(x, z), z);
+      pos.push(x, terrainY(x, z), z);
     }
   }
   for (let j = 0; j < RINGS; j++) for (let i = 0; i < SEG; i++) {
@@ -489,7 +493,7 @@ export function buildShore(scene, uniforms) {
     if (d < bankEdge && R() > 0.3) continue;           // only a few strays on the open sand
     const s = d < bankEdge ? rr(0.6, 1.0) : rr(0.5, 1.0);
     const g = rr(0.75, 1.1);
-    tufts.push({ x: q.x, y: groundY(q.x, q.z) - 0.03, z: q.z, ry: rr(0, 6.28), sx: s, sy: s * rr(0.8, 1.3), sz: s,
+    tufts.push({ x: q.x, y: terrainY(q.x, q.z) - 0.03, z: q.z, ry: rr(0, 6.28), sx: s, sy: s * rr(0.8, 1.3), sz: s,
       c: [0.20 * g, 0.30 * g, 0.13 * g] });
   }
   instanced(dress, bladeTuft(9, 0.7, 0.28, 0.035, 11), dressingMaterial(shoreUniforms, 0.12, true), tufts, 'grass');
@@ -501,7 +505,7 @@ export function buildShore(scene, uniforms) {
     const a = rr(NEAR_A0, NEAR_A1), d = i % 2 ? rr(0.2, 4) : rr(0.6, 22);
     const q = ringPt(a, d); const s = rr(0.12, 0.38);
     if (onPier(q.x, q.z, 1.2) || nearLight(q.x, q.z, 1.3)) continue;
-    rocks.push({ x: q.x, y: groundY(q.x, q.z) - s * 0.25, z: q.z, rx: rr(-0.3, 0.3), ry: rr(0, 6.28), sx: s, sy: s, sz: s * rr(0.7, 1.2), c: rockCol() });
+    rocks.push({ x: q.x, y: terrainY(q.x, q.z) - s * 0.25, z: q.z, rx: rr(-0.3, 0.3), ry: rr(0, 6.28), sx: s, sy: s, sz: s * rr(0.7, 1.2), c: rockCol() });
   }
   const clusters = [[NEAR_A0 - 0.06, 1], [NEAR_A1 + 0.06, 1], [1.33, -1.4], [1.86, -1.2], [1.12, 2.5], [2.05, 2.0], [0.62, 0.5], [2.5, 0.8],
     [-0.4, 2], [3.6, 1.5], [4.4, 1], [5.2, 2]];
@@ -512,7 +516,7 @@ export function buildShore(scene, uniforms) {
       const q = ringPt(a, d); const big = i === 0 ? rr(0.9, 1.5) : rr(0.3, 0.8);
       if (onPier(q.x, q.z, 1.2) || nearLight(q.x, q.z, 1.3)) continue;
       const s = big * (Math.abs(a - Math.PI / 2) < 0.6 && d > 0.5 ? 0.55 : 1);  // keep the sand near the start open
-      rocks.push({ x: q.x, y: Math.max(groundY(q.x, q.z), -0.6) - s * 0.15, z: q.z, rx: rr(-0.25, 0.25), ry: rr(0, 6.28), rz: rr(-0.2, 0.2), sx: s * rr(0.9, 1.4), sy: s, sz: s, c: rockCol() });
+      rocks.push({ x: q.x, y: Math.max(terrainY(q.x, q.z), -0.6) - s * 0.15, z: q.z, rx: rr(-0.25, 0.25), ry: rr(0, 6.28), rz: rr(-0.2, 0.2), sx: s * rr(0.9, 1.4), sy: s, sz: s, c: rockCol() });
     }
   });
   instanced(dress, rockGeometry(3), dressingMaterial(shoreUniforms, 0, false), rocks, 'rock');
@@ -524,7 +528,7 @@ export function buildShore(scene, uniforms) {
     const d = rr(1.6, 6.5); const q = ringPt(a, d);
     if (onPier(q.x, q.z, 1.2) || nearLight(q.x, q.z, 1.3)) continue;
     const len = rr(1.4, 3.6), th = rr(0.7, 1.3), v = rr(0.85, 1.15);
-    wood.push({ x: q.x, y: groundY(q.x, q.z) + 0.06 * th, z: q.z, ry: -a - Math.PI / 2 + rr(-0.5, 0.5), rz: rr(-0.05, 0.05), sx: len, sy: th, sz: th, c: [0.38 * v, 0.33 * v, 0.28 * v] });
+    wood.push({ x: q.x, y: terrainY(q.x, q.z) + 0.06 * th, z: q.z, ry: -a - Math.PI / 2 + rr(-0.5, 0.5), rz: rr(-0.05, 0.05), sx: len, sy: th, sz: th, c: [0.38 * v, 0.33 * v, 0.28 * v] });
   }
   instanced(dress, driftwoodGeometry(), dressingMaterial(shoreUniforms, 0, false), wood, 'driftwood');
 
@@ -539,7 +543,7 @@ export function buildShore(scene, uniforms) {
       const q = ringPt(a, d);
       if (onPier(q.x, q.z, 0.4) || d > 0.5) continue;
       const s = rr(0.9, 2.1), g = rr(0.8, 1.15);
-      reeds.push({ x: q.x, y: Math.max(groundY(q.x, q.z), -0.35), z: q.z, ry: rr(0, 6.28), sx: rr(0.8, 1.3), sy: s, sz: rr(0.8, 1.3), c: [0.17 * g, 0.21 * g, 0.10 * g] });
+      reeds.push({ x: q.x, y: Math.max(terrainY(q.x, q.z), -0.35), z: q.z, ry: rr(0, 6.28), sx: rr(0.8, 1.3), sy: s, sz: rr(0.8, 1.3), c: [0.17 * g, 0.21 * g, 0.10 * g] });
     }
   }
   instanced(dress, reedClump(21), dressingMaterial(shoreUniforms, 0.09, true), reeds, 'reeds');
@@ -552,13 +556,13 @@ export function buildShore(scene, uniforms) {
     const d = rr(4, 30); const q = ringPt(a, d);
     if (walkable(q.x, q.z) || q.z > -42) continue;
     const s = rr(1.0, 1.7), v = rr(0.8, 1.15);
-    trees.push({ x: q.x, y: groundY(q.x, q.z) - 0.1, z: q.z, ry: rr(0, 6.28), sx: s, sy: s * rr(0.9, 1.3), sz: s, c: [0.09 * v, 0.14 * v, 0.08 * v] });
+    trees.push({ x: q.x, y: terrainY(q.x, q.z) - 0.1, z: q.z, ry: rr(0, 6.28), sx: s, sy: s * rr(0.9, 1.3), sz: s, c: [0.09 * v, 0.14 * v, 0.08 * v] });
   }
   for (let i = 0; i < 600 && bushes.length < 60; i++) {
     const a = rr(0, Math.PI * 2), d = rr(2.5, 40); const q = ringPt(a, d);
     if (walkable(q.x, q.z) || q.z > -42) continue;
     const s = rr(0.5, 1.1), v = rr(0.8, 1.2);
-    bushes.push({ x: q.x, y: groundY(q.x, q.z) - 0.05, z: q.z, ry: rr(0, 6.28), sx: s * 1.3, sy: s * 1.1, sz: s * 1.2, c: [0.13 * v, 0.20 * v, 0.09 * v] });
+    bushes.push({ x: q.x, y: terrainY(q.x, q.z) - 0.05, z: q.z, ry: rr(0, 6.28), sx: s * 1.3, sy: s * 1.1, sz: s * 1.2, c: [0.13 * v, 0.20 * v, 0.09 * v] });
   }
   instanced(dress, canopyGeometry(5), dressingMaterial(shoreUniforms, 0.015, false), trees, 'tree');
   instanced(dress, bladeTuft(34, 1.5, 1.1, 0.11, 17), dressingMaterial(shoreUniforms, 0.05, true), bushes, 'bush');
@@ -589,7 +593,7 @@ export function buildShore(scene, uniforms) {
   }
   for (let d = PIER.d0 - 0.6; d > PIER.d1 - 0.1; d -= 2.6) for (const side of [-0.9, 0.9]) {
     const q = at(d, side); const top = PIER.deck + (d < PIER.d1 + 2.6 ? 0.55 : 0.12);
-    const bottom = Math.min(groundY(q.x, q.z), 0) - 0.6;
+    const bottom = Math.min(terrainY(q.x, q.z), 0) - 0.6;
     piles.push({ x: q.x, y: (top + bottom) / 2, z: q.z, ry: pr(0, 6), rz: pr(-0.03, 0.03), sx: 1, sy: top - bottom, sz: 1, c: woodC(0.6) });
   }
   // a lantern post at the end, the place to send lanterns off from
@@ -672,26 +676,26 @@ export function buildShore(scene, uniforms) {
     };
     if (kind < 0.42) put(6 + Math.floor(SR() * 10), (x, z) => {
       const s = sr(0.025, 0.11) * (SR() < 0.12 ? 1.8 : 1);
-      pebbles.push({ x, y: groundY(x, z) - s * 0.2, z, rx: sr(-0.3, 0.3), ry: sr(0, 6.28), sx: s * sr(0.9, 1.4), sy: s, sz: s, c: pebbleCol() });
+      pebbles.push({ x, y: terrainY(x, z) - s * 0.2, z, rx: sr(-0.3, 0.3), ry: sr(0, 6.28), sx: s * sr(0.9, 1.4), sy: s, sz: s, c: pebbleCol() });
     });
     else if (kind < 0.58 && cd < 4.5) put(3 + Math.floor(SR() * 6), (x, z) => {
       const s = sr(0.035, 0.075), v = sr(0.85, 1.15), pink = SR() < 0.4;
-      shells.push({ x, y: groundY(x, z) + 0.004, z, rx: sr(-0.2, 0.2), ry: sr(0, 6.28), rz: sr(-0.2, 0.2), sx: s, sy: s, sz: s,
+      shells.push({ x, y: terrainY(x, z) + 0.004, z, rx: sr(-0.2, 0.2), ry: sr(0, 6.28), rz: sr(-0.2, 0.2), sx: s, sy: s, sz: s,
         c: pink ? [0.52 * v, 0.40 * v, 0.37 * v] : [0.54 * v, 0.49 * v, 0.42 * v] });
     });
     else if (kind < 0.74) put(2 + Math.floor(SR() * 5), (x, z) => {
       const len = sr(0.25, 0.85), th = sr(0.012, 0.028), v = sr(0.7, 1.1);
-      twigs.push({ x, y: groundY(x, z) + th * 0.6, z, ry: sr(0, 6.28), rz: sr(-0.06, 0.06), sx: len, sy: th, sz: th, c: [0.26 * v, 0.19 * v, 0.13 * v] });
+      twigs.push({ x, y: terrainY(x, z) + th * 0.6, z, ry: sr(0, 6.28), rz: sr(-0.06, 0.06), sx: len, sy: th, sz: th, c: [0.26 * v, 0.19 * v, 0.13 * v] });
     });
     else if (kind < 0.95) put(3 + Math.floor(SR() * 7), (x, z, d) => {
       const s = d < 3 ? sr(0.35, 0.7) : sr(0.45, 0.95), g = sr(0.75, 1.15);
       const dry = d < 3 || SR() < 0.25;                           // sedge by the water is straw-coloured
-      sedge.push({ x, y: groundY(x, z) - 0.02, z, ry: sr(0, 6.28), sx: s, sy: s * sr(0.8, 1.3), sz: s,
+      sedge.push({ x, y: terrainY(x, z) - 0.02, z, ry: sr(0, 6.28), sx: s, sy: s * sr(0.8, 1.3), sz: s,
         c: dry ? [0.30 * g, 0.27 * g, 0.15 * g] : [0.17 * g, 0.27 * g, 0.11 * g] });
     });
     else put(1 + Math.floor(SR() * 3), (x, z) => {
       const len = sr(0.35, 0.9), th = sr(0.25, 0.45), v = sr(0.85, 1.15);
-      bits.push({ x, y: groundY(x, z) + 0.05 * th, z, ry: sr(0, 6.28), rz: sr(-0.05, 0.05), sx: len, sy: th, sz: th, c: [0.40 * v, 0.35 * v, 0.29 * v] });
+      bits.push({ x, y: terrainY(x, z) + 0.05 * th, z, ry: sr(0, 6.28), rz: sr(-0.05, 0.05), sx: len, sy: th, sz: th, c: [0.40 * v, 0.35 * v, 0.29 * v] });
     });
   }
   instanced(dress, rockGeometry(57, 0), dressingMaterial(shoreUniforms, 0, false), pebbles, 'pebbles');
@@ -726,7 +730,7 @@ export function buildShore(scene, uniforms) {
   }
   const stones = [], cairns = [], flames = [], candles = [];
   SHORE_LIGHTS.forEach((L, i) => {
-    const y = groundY(L.x, L.z) - 0.04; const v = 0.85 + 0.3 * hash2(i, 3.7);
+    const y = terrainY(L.x, L.z) - 0.04; const v = 0.85 + 0.3 * hash2(i, 3.7);
     const item = { x: L.x, y, z: L.z, ry: hash2(i, 9.1) * 6.28, sx: 1, sy: 1, sz: 1, c: [0.20 * v, 0.195 * v, 0.19 * v] };
     if (L.k === 1) { stones.push(item); flames.push({ x: L.x, y: y + 1.02, z: L.z, k: 1 }); }
     else if (L.k === 0) { cairns.push(item); flames.push({ x: L.x, y: y + 0.4, z: L.z, k: 0 }); }
@@ -735,8 +739,8 @@ export function buildShore(scene, uniforms) {
       for (let c = 0; c < n; c++) {
         const a = c / n * 6.28 + hash2(i, c), r = 0.12 + 0.2 * hash2(c, i);
         const cx = L.x + Math.cos(a) * r, cz = L.z + Math.sin(a) * r, h = 0.07 + 0.16 * hash2(c + 3, i);
-        candles.push({ x: cx, y: groundY(cx, cz) + h / 2 - 0.01, z: cz, sx: 1, sy: h / 0.12, sz: 1, c: [0.62, 0.55, 0.45] });
-        flames.push({ x: cx, y: groundY(cx, cz) + h + 0.03, z: cz, k: 2 });
+        candles.push({ x: cx, y: terrainY(cx, cz) + h / 2 - 0.01, z: cz, sx: 1, sy: h / 0.12, sz: 1, c: [0.62, 0.55, 0.45] });
+        flames.push({ x: cx, y: terrainY(cx, cz) + h + 0.03, z: cz, k: 2 });
       }
     }
     shoreUniforms.lamps.value[i].set(L.x, y + (L.k === 1 ? 0.95 : 0.4), L.z, L.k === 1 ? 1.05 : L.k === 0 ? 0.65 : 0.55);
@@ -775,7 +779,7 @@ export function buildShore(scene, uniforms) {
     if (n < 90) { const L = SHORE_LIGHTS[n % SHORE_LIGHTS.length]; const a = rr(0, 6.28), r = rr(0.6, 3.2); x = L.x + Math.cos(a) * r; z = L.z + Math.sin(a) * r; }
     else { const q = ringPt(rr(NEAR_A0 - 0.2, NEAR_A1 + 0.2), rr(6, 34)); x = q.x; z = q.z; }
     if (waterDist(x, z) < 0.6) continue;
-    gpos.set([x, groundY(x, z) + rr(0.05, 0.5), z], n * 3); gseed[n] = R(); n++;
+    gpos.set([x, terrainY(x, z) + rr(0.05, 0.5), z], n * 3); gseed[n] = R(); n++;
   }
   const gg = new THREE.BufferGeometry();
   gg.setAttribute('position', new THREE.BufferAttribute(gpos, 3));
@@ -829,7 +833,7 @@ export function buildShore(scene, uniforms) {
   WATER_TREES.forEach((t, i) => {
     const a = Math.atan2(t.z - LAKE.cz, t.x - LAKE.cx);
     const ry = Math.PI / 2 - a + (hash2(i, 1.3) - 0.5) * 0.6;   // local -z (the lean) points at the lake centre
-    const y = Math.max(groundY(t.x, t.z), -0.5) - 0.1, v = 0.85 + 0.3 * hash2(i, 7.7);
+    const y = Math.max(terrainY(t.x, t.z), -0.5) - 0.1, v = 0.85 + 0.3 * hash2(i, 7.7);
     trunks.push({ x: t.x, y, z: t.z, ry, sx: t.h, sy: t.h, sz: t.h, c: [0.17 * v, 0.13 * v, 0.10 * v] });
     crowns.push({ x: t.x, y, z: t.z, ry, sx: t.h, sy: t.h, sz: t.h, c: [0.11 * v, 0.17 * v, 0.09 * v] });
   });
