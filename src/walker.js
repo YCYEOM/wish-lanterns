@@ -333,7 +333,7 @@ export function createWalker(scene, shore, glowTex) {
     reset(x, z) {
       pos.set(x, groundY(x, z), z); yaw = Math.atan2(-lakeDir().x, -lakeDir().z);
       vel.x = vel.z = 0; lastVx = lastVz = 0; turnRate = 0; swing = swingV = 0; walkAmt = 0; flareS = 0; raise = 0; idleT = 0;
-      target = null; onArrive = null; cam.init = false; moving = false; cer = null; kneel = lift = 0;
+      target = null; onArrive = null; cam.init = false; cam.boom = undefined; moving = false; cer = null; kneel = lift = 0;
       view.yaw = view.pitch = view.wYaw = view.wPitch = 0;
     },
     // start the launch pose; returns its timing { dur, release } (seconds)
@@ -424,8 +424,20 @@ export function createWalker(scene, shore, glowTex) {
       const back = 6.9 - view.pitch * 1.2, up = 3.8 + view.pitch * 4.2;
       const tilt = view.pitch < 0 ? -view.pitch * 9 : 0;   // looking up toward the sky lanterns
       const lean = Math.max(-1, Math.min(1, turnRate * 0.25)) * Math.min(1, Math.hypot(vel.x, vel.z) / SPEED);
-      const want = new THREE.Vector3(pos.x - f.x * back + rx * (look.x * 1.2 - lean * 0.4), 0, pos.z - f.z * back + rz * (look.x * 1.2 - lean * 0.4));
-      want.y = Math.max(pos.y + up - look.y * 0.6, groundY(want.x, want.z) + 1.2);
+      // turned round toward the beach the camera hangs out over the shallows: pull it in short of any tree
+      // standing between it and the character
+      let boom = back;
+      const bx = -f.x, bz = -f.z;
+      for (const o of shore.CAM_OBSTACLES) {
+        const ox = o.x - pos.x, oz = o.z - pos.z, t = ox * bx + oz * bz;
+        if (t < 0.5 || t > boom + o.r) continue;
+        const side = Math.abs(ox * bz - oz * bx);
+        if (side < o.r) boom = Math.max(4.2, Math.min(boom, t - Math.sqrt(o.r * o.r - side * side) - 0.3));
+      }
+      cam.boom = cam.boom === undefined ? boom : cam.boom + (boom - cam.boom) * (1 - Math.exp(-dt * (boom < cam.boom ? 12 : 3)));
+      const want = new THREE.Vector3(pos.x - f.x * cam.boom + rx * (look.x * 1.2 - lean * 0.4), 0, pos.z - f.z * cam.boom + rz * (look.x * 1.2 - lean * 0.4));
+      const short = cam.boom / back;          // pulled in: come down with it so the character stays in frame
+      want.y = Math.max(pos.y + up * (0.4 + 0.6 * short) - look.y * 0.6, groundY(want.x, want.z) + 1.2);
       const lookAt = new THREE.Vector3(pos.x + f.x * 10 + rx * look.x * 3, pos.y - 0.8 - look.y * 1.5 + tilt, pos.z + f.z * 10 + rz * look.x * 3);
       if (!cam.init) { cam.pos.copy(want); cam.look.copy(lookAt); cam.init = true; }
       const k = 1 - Math.exp(-dt * 4);

@@ -62,6 +62,8 @@ const WATER_TREES = [
   { x: -11.5, d: -1.4, h: 1.15, seed: 3 }, { x: -16.5, d: -0.6, h: 0.9, seed: 8 }, { x: -27, d: -1.0, h: 1.05, seed: 5 },
   { x: 22, d: -1.2, h: 1.1, seed: 12 }, { x: 30, d: -0.5, h: 0.85, seed: 4 }, { x: -44, d: -1.0, h: 1.2, seed: 9 }, { x: 52, d: -1.2, h: 1.0, seed: 6 },
 ].map(T => { const p = ringAt(atX(T.x, T.d), T.d); return { ...T, x: p.x, z: p.z }; });
+// what the follow camera must not sit behind: the shallows trees (trunk + crown, roughly a 2 m disc each)
+export const CAM_OBSTACLES = WATER_TREES.map(t => ({ x: t.x, z: t.z, r: 2.1 * t.h }));
 function nearLight(x, z, r) { for (const L of SHORE_LIGHTS) if ((x - L.x) ** 2 + (z - L.z) ** 2 < r * r) return true; return false; }
 function blocked(x, z) {
   for (const L of SHORE_LIGHTS) { const dx = x - L.x, dz = z - L.z; if (L.k < 2 && dx * dx + dz * dz < (L.k ? 0.55 : 0.4) ** 2) return true; }   // tea-lights (k 2) are stepped over

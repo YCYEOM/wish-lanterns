@@ -629,12 +629,19 @@ const net = new Net({
     if (fresh) { // launched just now by someone on the shore: comes in from the near edge
       // somewhere along the near shore, but out over the water and never right beside you (it used to rise
       // up on the sand, sometimes right in front of the camera)
-      let e2;
-      for (let i = 0; i < 12; i++) {
-        const a = Math.PI / 2 + (nrnd() - 0.5) * 1.0;
-        e2 = shore.nearestShore(LAKE.cx + Math.cos(a) * 50, LAKE.cz + Math.sin(a) * 50, water ? -1.5 : -3.5);
-        if (Math.hypot(e2.x - walker.pos.x, e2.z - walker.pos.z) > 12) break;
+      // prefer a spot you can see (inside the middle of the frame), 12-40 m away, so you catch it setting off
+      let e2 = null, far = null;
+      const sp = new THREE.Vector3();
+      for (let i = 0; i < 40 && !e2; i++) {
+        const a = Math.PI / 2 + (nrnd() - 0.5) * 1.3;
+        const c = shore.nearestShore(LAKE.cx + Math.cos(a) * 50, LAKE.cz + Math.sin(a) * 50, (water ? -1.5 : -3.5) - nrnd() * 6);
+        const d = Math.hypot(c.x - walker.pos.x, c.z - walker.pos.z);
+        if (d < 12) continue;
+        if (!far) far = c;
+        sp.set(c.x, water ? 0.3 : 3, c.z).project(camera);
+        if (d < 40 && sp.z < 1 && Math.abs(sp.x) < 0.75 && Math.abs(sp.y) < 0.8) e2 = c;
       }
+      e2 = e2 || far || shore.nearestShore(LAKE.cx, LAKE.cz + 50, -4);
       x = e2.x; z = e2.z; y = water ? 0 : 1.6;
     } else {
       for (let i = 0; i < 30; i++) {

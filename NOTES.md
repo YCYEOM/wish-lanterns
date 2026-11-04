@@ -62,6 +62,9 @@ https://ycyeom.github.io/wish-lanterns/
    camera looks (`walker.viewDir()`). Remote freshly-launched lanterns appear out over the water, >12 m from you,
    and grow in small (they used to rise on the sand, sometimes in your face); any lantern fades out within ~1.6-4 m
    of the camera. Tests: `.studio/view.mjs`, `.studio/arrive.mjs` (`__studio.fakeArrival(mode)`).
+   Follow-ups: turned toward the beach, the boom pulls in (min 4.2 m, and lower with it) short of any shallows
+   tree (`shore.CAM_OBSTACLES`); remote arrivals now pick a spot 12-40 m away inside the middle of the current
+   frame (fallback: any spot >12 m). Test: `.studio/treecam.mjs`.
 5. Lake surface shows stripe-like bands; lilac/sky lanterns read pale; back grass looks smeared.
 6. Not tested on a real phone.
 7. Ideas: time-of-night drift, shooting-star wish.
