@@ -158,8 +158,8 @@ const water = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400, 1, 1), new THRE
           vec2 o = (vec2(hash13(vec3(ci, 3.1)), hash13(vec3(ci, 5.7))) - 0.5) * 0.5;
           float lt = fract(t * (0.55 + ph * 0.5) + ph * 7.0);
           float rr = length(cf - o);
-          float ring = exp(-pow((rr - lt * 0.45) / 0.035, 2.0)) * (1.0 - lt) * step(ph, 0.35 + 0.6 * rainK);
-          g += (cf - o) / max(rr, 1e-3) * ring * 0.9 * rainK * (1.0 - dist / 45.0);
+          float ring = exp(-pow((rr - lt * 0.45) / 0.05, 2.0)) * (1.0 - lt) * (1.0 - lt) * step(ph, 0.12 + 0.2 * rainK);
+          g += (cf - o) / max(rr, 1e-3) * ring * 0.45 * rainK * (1.0 - dist / 45.0);
         }
       }
       vec3 n = normalize(vec3(g.x, 1.0, g.y));

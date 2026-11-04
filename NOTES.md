@@ -101,3 +101,9 @@ https://ycyeom.github.io/wish-lanterns/
 - Hooks: `__studio.weather(kind|null, instant)`, `__studio.season(name|null, instant)`, `__studio.atmos()`;
   `state().atmos`. Tests: `.studio/wx.mjs`, `wxsky.mjs`, `wxfail.mjs` (blocked API + fps), `wxphone.mjs`,
   `pick-wx.mjs` (taps 28/28 in rain and snow).
+- Studio cameras `wx-cloudy|rain|snow|fog` and `season-spring|summer|autumn|winter` force each state for judges;
+  `lake/low/sky` put the real Seoul state back.
+- Fixed with it: the beach mesh and its dressing used `groundY`, which returns the deck height on the pier, so a flat
+  pale slab stood on the water along the pier footprint; they now use `terrainY` (feet still stand on the deck).
+- Ship review (art director: ship). Left as known: the far shore under the pines reads pale in fog/rain; a few far
+  round canopies stay grey in autumn; cloudy is an even overcast rather than distinct cloud shapes.
