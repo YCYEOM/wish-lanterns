@@ -113,9 +113,15 @@ const water = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400, 1, 1), new THRE
       float dist = length(vW - camPos);
       float k = 1.0 / (1.0 + dist * 0.02);
       vec2 g = vec2(0.0);
-      g += vec2(cos(p.x*0.31 + t*0.55), cos(p.y*0.47 + t*0.42)) * 0.035;
-      g += vec2(cos(p.x*1.05 - p.y*0.66 + t*1.05), cos(p.y*1.27 + p.x*0.41 - t*0.86)) * 0.022 * k;
-      g += (vec2(noise3(vec3(p*0.9, t*0.35)), noise3(vec3(p*0.9 + 9.0, t*0.35))) - 0.5) * 0.06 * k;
+      // swells in a few slanted directions (axis-aligned ones lined up into bands across the lake), each
+      // fading out with distance before it can alias at grazing angles
+      float kf = 1.0 / (1.0 + dist * 0.045);
+      vec2 d1 = vec2(0.80, 0.60), d2 = vec2(-0.55, 0.83), d3 = vec2(0.28, -0.96);
+      g += d1 * cos(dot(p, d1) * 0.37 + t * 0.55) * 0.026 * kf;
+      g += d2 * cos(dot(p, d2) * 0.53 - t * 0.47) * 0.022 * kf;
+      g += d3 * cos(dot(p, d3) * 1.11 + t * 0.95) * 0.014 * k * kf;
+      g += (vec2(noise3(vec3(p*0.6, t*0.3)), noise3(vec3(p*0.6 + 9.0, t*0.3))) - 0.5) * 0.07 * k;
+      g += (vec2(noise3(vec3(p*1.7, t*0.5)), noise3(vec3(p*1.7 + 4.0, t*0.5))) - 0.5) * 0.035 * k * kf;
       vec3 n = normalize(vec3(g.x, 1.0, g.y));
       vec3 r = reflect(-v, n); r.y = abs(r.y);
       vec3 refl = skyColor(normalize(r), t, 0.8);
@@ -285,7 +291,7 @@ function makeLantern(opts) {
   const color = new THREE.Color(col.hex);
   const g = new THREE.Group();
   const paper = (opts.mode === 'water' ? GEO.box : GEO.sky).clone();
-  gradientColors(paper, color.clone().lerp(new THREE.Color(0xffd9a0), 0.12), 0.55, opts.mode === 'water' ? 1.2 : 1.1);
+  gradientColors(paper, new THREE.Color(col.lamp ?? col.hex).lerp(new THREE.Color(0xffd9a0), 0.1), 0.5, opts.mode === 'water' ? 1.1 : 1.0);
   const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.96, side: THREE.DoubleSide, fog: false });
   g.add(new THREE.Mesh(paper, mat));
   if (opts.mode === 'water') { g.add(new THREE.Mesh(GEO.base, darkMat)); g.add(new THREE.Mesh(GEO.frame, darkMat)); }
@@ -1031,6 +1037,8 @@ installStudio({
 // keep our extra helpers next to the contract's own verbs
 window.__studio.screenOf = (id) => { const L = lanterns.find(l => l.id === id); if (!L) return null; const v = new THREE.Vector3(L.x, L.y + (L.mode === 'water' ? 0.63 : 0.85), L.z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight, dist: +camera.position.distanceTo(new THREE.Vector3(L.x, L.y, L.z)).toFixed(1) }; };
 window.__studio.view = () => ({ ...walker.view, dir: walker.viewDir(), st: walker.state() });
+window.__studio.swatch = () => { COLORS.forEach((c, i) => { makeLantern({ id: 'sw' + i, color: c.id, mode: 'water', x: (i - 2) * 2.2, y: 0, z: 4 }); makeLantern({ id: 'sv' + i, color: c.id, mode: 'sky', x: (i - 2) * 2.2, y: 4.5, z: 2 }); });
+  lanterns.filter(l => /^s[wv]/.test(l.id)).forEach(l => { l.vx = l.vz = l.vy = 0; l.speed = 0; }); return true; };
 window.__studio.ids = () => lanterns.map(l => l.id);
 window.__studio.dbg = () => { const L = lanterns[lanterns.length - 1]; const h = walker.hands(); return { busy: walker.busy(), held: !!L.held, t: L.held && L.held.t, L: [L.x, L.y, L.z].map(v => +v.toFixed(2)), a: +L.alpha.toFixed(2), sc: +L.group.scale.x.toFixed(2), hands: [h.x, h.y, h.z].map(v => +v.toFixed(2)), cam: camera.position.toArray().map(v => +v.toFixed(1)), cine: !!cine }; };
 // test hooks: freeze the live loop and advance it in fixed 1/60 s steps (camera included)

@@ -390,7 +390,10 @@ export function buildShore(scene, uniforms) {
         // the grass bank creeps down over the sand in tongues
         float gEdge = 7.2 + 5.0 * big + 1.5 * mid;
         float gK = smoothstep(gEdge, gEdge + 2.5, d);
-        float streak = n21(vec2(p.x * 9.0 + p.y * 2.0, p.y * 1.4));
+        // patchy, even in every direction (a stretched streak noise read as brush smears from afar),
+        // softening into the broad patches with distance so the far bank does not shimmer
+        float gFar = smoothstep(12.0, 40.0, length(cameraPosition.xz - p));
+        float streak = mix(0.55 * n21(p * 3.1) + 0.45 * n21(p * 7.3 + 4.0), mid, gFar);
         float tuftK = smoothstep(0.6, 0.7, fbm(p * 0.9 + 3.0)) * smoothstep(3.0, 6.0, d);
         gK = max(gK, tuftK * 0.55 * (0.4 + 0.6 * streak));
         vec3 grass = mix(grassA, grassB, mid) * (0.6 + 0.7 * streak);

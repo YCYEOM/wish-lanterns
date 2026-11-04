@@ -65,6 +65,10 @@ https://ycyeom.github.io/wish-lanterns/
    Follow-ups: turned toward the beach, the boom pulls in (min 4.2 m, and lower with it) short of any shallows
    tree (`shore.CAM_OBSTACLES`); remote arrivals now pick a spot 12-40 m away inside the middle of the current
    frame (fallback: any spot >12 m). Test: `.studio/treecam.mjs`.
-5. Lake surface shows stripe-like bands; lilac/sky lanterns read pale; back grass looks smeared.
+5. ~~Lake bands / pale lanterns / smeared grass~~ done: water normals now come from three slanted swells plus two
+   noise octaves, all faded with distance (the axis-aligned cos waves lined up into bands). Each colour has a deeper
+   `lamp` hex in data.js for the lit paper (pastels clipped to white); UI swatches keep `hex`. The grass bank's
+   stretched streak noise is now isotropic and blends into the broad patches past ~12-40 m.
+   Test: `.studio/look5.mjs <tag>` (`__studio.swatch()` lines up all colours).
 6. Not tested on a real phone.
 7. Ideas: time-of-night drift, shooting-star wish.

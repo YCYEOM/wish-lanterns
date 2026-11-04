@@ -1,11 +1,12 @@
 // Static content: lantern colours, preset phrases, warm messages for virtual lanterns, word filter.
 
+// hex: the UI swatch; lamp: the deeper paper colour the 3D lantern is lit with (pastels wash out to white once lit)
 export const COLORS = [
   { id: 'amber', name: '주황', hex: 0xffa24a, css: '#ffa24a' },
-  { id: 'rose', name: '분홍', hex: 0xff8fb0, css: '#ff8fb0' },
-  { id: 'sky', name: '하늘', hex: 0x8fd0ff, css: '#8fd0ff' },
-  { id: 'mint', name: '연두', hex: 0xb4f08a, css: '#b4f08a' },
-  { id: 'lilac', name: '보라', hex: 0xc6a2ff, css: '#c6a2ff' },
+  { id: 'rose', name: '분홍', hex: 0xff8fb0, lamp: 0xff6a98, css: '#ff8fb0' },
+  { id: 'sky', name: '하늘', hex: 0x8fd0ff, lamp: 0x3f9cff, css: '#8fd0ff' },
+  { id: 'mint', name: '연두', hex: 0xb4f08a, lamp: 0x72d84a, css: '#b4f08a' },
+  { id: 'lilac', name: '보라', hex: 0xc6a2ff, lamp: 0x9a5cff, css: '#c6a2ff' },
 ];
 
 export const PRESETS = [
