@@ -23,7 +23,8 @@ const SCALE = 1.22;
 
 function tag(o, t) { o.userData.tag = t; return o; }
 
-export function createWalker(scene, shore, glowTex) {
+// opts.remote: another player's character (no scene lights of its own, a scarf colour of its own)
+export function createWalker(scene, shore, glowTex, opts = {}) {
   const { LAKE, groundY, walkable, waterDist } = shore;
   const root = new THREE.Group();
   root.userData.tag = 'player';
@@ -40,7 +41,7 @@ export function createWalker(scene, shore, glowTex) {
   const eyeM = lam(0x241a26);
   const pants = lam(0x39406a);
   const boots = lam(0x4a3428);
-  const scarfMat = lam(0xf07a5e, { side: THREE.DoubleSide });
+  const scarfMat = lam(opts.scarf ?? 0xf07a5e, { side: THREE.DoubleSide });
   const gold = lam(0xd9a74a);
   const wood = lam(0x3b2a22);
 
@@ -181,8 +182,10 @@ export function createWalker(scene, shore, glowTex) {
   glow.scale.setScalar(1.7); glow.position.y = -0.2; lantern.add(glow);
   const light = new THREE.PointLight(0xffaa55, 2.2, 7, 1.6); light.position.y = -0.2; lantern.add(light);
   // soft moon/sky light for the lit materials (the rest of the world uses its own shaders)
-  const hemi = new THREE.HemisphereLight(0x8090d0, 0x201828, 0.9); scene.add(hemi);
-  const moon = new THREE.DirectionalLight(0xaab8ff, 0.6); moon.position.set(-30, 60, -40); scene.add(moon);
+  if (!opts.remote) {
+    const hemi = new THREE.HemisphereLight(0x8090d0, 0x201828, 0.9); scene.add(hemi);
+    const moon = new THREE.DirectionalLight(0xaab8ff, 0.6); moon.position.set(-30, 60, -40); scene.add(moon);
+  }
 
   // --- motion state ---
   const pos = new THREE.Vector3();
@@ -450,6 +453,11 @@ export function createWalker(scene, shore, glowTex) {
       return { x: +pos.x.toFixed(2), z: +pos.z.toFixed(2), yaw: +yaw.toFixed(3), moving, nearWater: d < NEAR_WATER, waterDist: +d.toFixed(2) };
     },
     NEAR_WATER,
+    // take this character out of the world (another player left)
+    dispose() {
+      scene.remove(root);
+      root.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach((m) => m.dispose()); });
+    },
   };
   return w;
 }

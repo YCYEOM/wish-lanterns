@@ -49,16 +49,46 @@ export const WARM_MESSAGES = [
   '친구야 생일 축하해',
 ];
 
+// banned words are matched on a "skeleton" of the message: spaces, dots, digits, symbols and emoji between
+// letters are skipped and look-alike characters folded (1->i, 0->o, $->s, @->a ...), so "시 1 발", "f.u.c.k"
+// and "ㅅ_ㅂ" are caught too; the whole span in the original text becomes ♡
 const BANNED = [
-  '씨발', '시발', 'ㅅㅂ', 'ㅆㅂ', '병신', 'ㅂㅅ', '개새끼', '새끼', '좆', '존나', 'ㅈㄴ', '지랄', '미친놈', '미친년',
-  '닥쳐', '꺼져', '죽어', 'fuck', 'shit', 'bitch', 'asshole', 'dick', 'cunt',
+  '씨발', '시발', '씨빨', '씌발', '씨바', '시빨', '쓰발', '씨팔', '시팔', 'ㅅㅂ', 'ㅆㅂ', 'ㅆㅃ', 'ㅅㅃ',
+  '병신', '븅신', '빙신', 'ㅂㅅ', 'ㅄ', '개새끼', '개색', '개세끼', '새끼', '쌔끼', 'ㅅㄲ', '좆', '좃', '좇', '존나', '졸라', 'ㅈㄴ',
+  '지랄', 'ㅈㄹ', '미친놈', '미친년', '미친새', '닥쳐', '꺼져', '니미', '니애미', '느금', '엠창', '애미', '애비',
+  'fuck', 'fck', 'fuk', 'shit', 'bitch', 'asshole', 'dick', 'cunt', 'nigger', 'nigga', 'retard', 'slut', 'whore', 'pussy',
 ];
+const FOLD = { '1': 'i', '!': 'i', '|': 'i', '0': 'o', '3': 'e', '4': 'a', '@': 'a', '$': 's', '5': 's', '7': 't', '8': 'b' };
+const SKIP = /[\s.,_\-~*+=/\\'"`^:;()\[\]{}<>?#%&2069\u200b-\u200f\u3164\p{Extended_Pictographic}]/u;
 
 export function cleanMessage(raw) {
   let s = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 30);
-  for (const w of BANNED) {
-    const re = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    s = s.replace(re, '♡');
+  const chars = [...s];
+  const hide = new Array(chars.length).fill(false);
+  // two skeletons: one that folds digits/symbols into look-alike letters (for latin words), one that skips
+  // them (for Korean); each also in a form with repeated letters collapsed ("shiiit" -> "shit")
+  for (const fold of [true, false]) {
+    const sk = [], at = [];
+    chars.forEach((ch, i) => {
+      const low = ch.toLowerCase();
+      const f = fold ? FOLD[low] : null;
+      if (!f && (SKIP.test(ch) || /[0-9]/.test(ch) || (!fold && FOLD[low]))) return;
+      sk.push(f || low); at.push(i);
+    });
+    const cs = [], cat = [];
+    sk.forEach((c, k) => { if (c !== sk[k - 1] || /[가-힣ㄱ-ㅎ]/.test(c)) { cs.push(c); cat.push(at[k]); } else cat[cat.length - 1] = at[k]; });
+    for (const [skel, pos, first] of [[sk.join(''), at, at], [cs.join(''), cat, null]]) {
+      for (const w of BANNED) {
+        let k = skel.indexOf(w);
+        while (k !== -1) {
+          const startI = first ? pos[k] : (k === 0 ? 0 : cat[k - 1] + 1);
+          for (let j = Math.max(startI, 0); j <= pos[k + w.length - 1]; j++) if (!/\s/.test(chars[j]) || j > startI) hide[j] = true;
+          k = skel.indexOf(w, k + 1);
+        }
+      }
+    }
   }
-  return s;
+  let out = '', prev = false;
+  chars.forEach((ch, i) => { if (hide[i]) { if (!prev) out += '♡'; prev = true; } else { out += ch; prev = false; } });
+  return out;
 }

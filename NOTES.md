@@ -107,3 +107,24 @@ https://ycyeom.github.io/wish-lanterns/
   pale slab stood on the water along the pier footprint; they now use `terrainY` (feet still stand on the deck).
 - Ship review (art director: ship). Left as known: the far shore under the pines reads pale in fog/rain; a few far
   round canopies stay grey in autumn; cloudy is an even overcast rather than distinct cloud shapes.
+
+## Shared lake: memory, reach, people (after the audit list)
+1. Empty lake -> `src/board.js` (lazy-loaded): each launch is also posted as a signed Nostr event (kind 30078,
+   d=`wl:<owner>:<id>`, t=`wishlanterns-v1-lake-N`, NIP-40 expiration +24 h) to 5 public relays (damus, nos.lol,
+   nostr.mom, primal, offchain.pub). Joining a lake fetches the last day's lanterns (up to 80) and keeps a live
+   subscription. Own events are skipped by pubkey (per-browser key `wishLanterns.nsk`). Test: `.studio/persist.mjs`
+   (A launches and leaves, B arrives later and sees it), `.studio/boardtest.mjs` (node, two clients + heart).
+2. Blocked WebRTC -> the board also carries new lanterns and hearts live (hearts: ephemeral kind 21078 with an id `h`,
+   deduped against the direct P2P copy via `heartSeen`). Presence count and characters still need WebRTC.
+3. Other players' characters -> net.js `pos` action (on a step >0.25 m, at most 5/s, or every 3 s; `cer` when they
+   launch). main.js keeps `others` (max 9) of `createWalker(..., { remote: true, scarf })` (no extra scene lights,
+   `dispose()` on leave/lake change), walking to the received spot and kneeling/lifting on `cer`. A lantern from a
+   visible peer sets off from in front of their character (board copies wait 2.5 s so the direct one wins).
+   Test: `.studio/avatars.mjs`.
+4. The connection line at the bottom shows only with `?debug`.
+5. `cleanMessage` matches banned words on two skeletons (digits/symbols folded for latin, skipped for Korean, plus
+   repeated letters collapsed); removed words that broke warm phrases ('시바' -> 시바견, '죽어' -> 죽어도 좋아).
+6. Download: main chunk ~172 KB gzipped (three.js); trystero (24 KB) and board (1.5 KB) load lazily.
+7. Review leftovers: shoreFog used sRGB-valued fog colours in a linear shader -> pale band under the far pines and
+   grey far canopies; now the scene fog colours in linear. Driftwood/twigs sit lower on the sand.
+   Still open: cloudy is an even overcast rather than distinct cloud shapes.

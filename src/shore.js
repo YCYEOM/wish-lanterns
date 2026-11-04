@@ -175,7 +175,9 @@ const LIGHT_GLSL = /* glsl */`
   vec3 shoreFog(vec3 lit, vec3 W){
     float dist = length(W - camPos);
     float fog = 1.0 - exp(-pow(dist * mix(0.0042, 0.012, fogK), 2.0));
-    return mix(lit, mix(vec3(0.082, 0.071, 0.172), vec3(0.13, 0.12, 0.20), fogK), fog);
+    // the scene's own fog colours (0x15122c night, 0x2c2a44 mist) in linear light, so the far bank fades into the
+    // hills and pines instead of a pale band under them
+    return mix(lit, mix(vec3(0.0075, 0.0060, 0.025), vec3(0.025, 0.023, 0.058), fogK), fog);
   }`;
 
 // one lit material for the instanced dressing: per-instance tint (aCol), optional wind sway on height
@@ -528,7 +530,7 @@ export function buildShore(scene, uniforms) {
     const d = rr(1.6, 6.5); const q = ringPt(a, d);
     if (onPier(q.x, q.z, 1.2) || nearLight(q.x, q.z, 1.3)) continue;
     const len = rr(1.4, 3.6), th = rr(0.7, 1.3), v = rr(0.85, 1.15);
-    wood.push({ x: q.x, y: terrainY(q.x, q.z) + 0.06 * th, z: q.z, ry: -a - Math.PI / 2 + rr(-0.5, 0.5), rz: rr(-0.05, 0.05), sx: len, sy: th, sz: th, c: [0.38 * v, 0.33 * v, 0.28 * v] });
+    wood.push({ x: q.x, y: terrainY(q.x, q.z) - 0.03 + 0.04 * th, z: q.z, ry: -a - Math.PI / 2 + rr(-0.5, 0.5), rz: rr(-0.05, 0.05), sx: len, sy: th, sz: th, c: [0.38 * v, 0.33 * v, 0.28 * v] });
   }
   instanced(dress, driftwoodGeometry(), dressingMaterial(shoreUniforms, 0, false), wood, 'driftwood');
 
@@ -685,7 +687,7 @@ export function buildShore(scene, uniforms) {
     });
     else if (kind < 0.74) put(2 + Math.floor(SR() * 5), (x, z) => {
       const len = sr(0.25, 0.85), th = sr(0.012, 0.028), v = sr(0.7, 1.1);
-      twigs.push({ x, y: terrainY(x, z) + th * 0.6, z, ry: sr(0, 6.28), rz: sr(-0.06, 0.06), sx: len, sy: th, sz: th, c: [0.26 * v, 0.19 * v, 0.13 * v] });
+      twigs.push({ x, y: terrainY(x, z) - 0.02 + th * 0.3, z, ry: sr(0, 6.28), rz: sr(-0.06, 0.06), sx: len, sy: th, sz: th, c: [0.26 * v, 0.19 * v, 0.13 * v] });
     });
     else if (kind < 0.95) put(3 + Math.floor(SR() * 7), (x, z, d) => {
       const s = d < 3 ? sr(0.35, 0.7) : sr(0.45, 0.95), g = sr(0.75, 1.15);
@@ -695,7 +697,7 @@ export function buildShore(scene, uniforms) {
     });
     else put(1 + Math.floor(SR() * 3), (x, z) => {
       const len = sr(0.35, 0.9), th = sr(0.25, 0.45), v = sr(0.85, 1.15);
-      bits.push({ x, y: terrainY(x, z) + 0.05 * th, z, ry: sr(0, 6.28), rz: sr(-0.05, 0.05), sx: len, sy: th, sz: th, c: [0.40 * v, 0.35 * v, 0.29 * v] });
+      bits.push({ x, y: terrainY(x, z) - 0.03 + 0.03 * th, z, ry: sr(0, 6.28), rz: sr(-0.05, 0.05), sx: len, sy: th, sz: th, c: [0.40 * v, 0.35 * v, 0.29 * v] });
     });
   }
   instanced(dress, rockGeometry(57, 0), dressingMaterial(shoreUniforms, 0, false), pebbles, 'pebbles');

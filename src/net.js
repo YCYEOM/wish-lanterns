@@ -3,7 +3,7 @@
 // a newcomer tries lake 1, listens for a few seconds, and moves on if it already holds LAKE_CAP people.
 // A ?lake=N link (the invite button) joins that lake directly, full or not.
 // Each player sends their recent lanterns to every peer that joins, and broadcasts new ones as they
-// launch; hearts are one-off messages. Nothing persists beyond the people currently on the lake.
+// launch; hearts are one-off messages. board.js keeps a day of lanterns on public relays besides.
 // The library loads lazily so the lake always runs solo if it cannot load or connect.
 
 export const BUILD = 'lanterns-p2p-2';
@@ -88,22 +88,30 @@ export class Net {
       });
       this.sendLanterns = room.makeAction('lanterns');
       this.sendHeartAction = room.makeAction('heart');
+      // where each person walks on the shore (a few times a second while moving) and when they kneel or lift
+      this.sendPosAction = room.makeAction('pos');
+      this.sendPosAction.onMessage = (d, meta) => {
+        const id = meta && meta.peerId;
+        if (room !== this.room || !id || !d || !isFinite(d.x) || !isFinite(d.z) || Math.abs(d.x) > 400 || Math.abs(d.z) > 400) return;
+        this.hooks.onPos && this.hooks.onPos(id, { x: +d.x, z: +d.z, cer: d.cer === 'water' || d.cer === 'sky' ? d.cer : null, s: d.s | 0 });
+      };
       this.sendLanterns.onMessage = (data, meta) => { if (room === this.room) this.receiveLanterns(data, meta && meta.peerId); };
       this.sendHeartAction.onMessage = (data) => {
         if (room !== this.room || !data || typeof data.id !== 'string' || data.id.length > 80) return;
-        this.hooks.onHeart(data.id);
+        this.hooks.onHeart(data.id, typeof data.h === 'string' ? data.h.slice(0, 60) : null);
       };
       room.onPeerJoin = (peerId) => {
         if (room !== this.room) return;
         this.refreshPeers();
         try { this.sendLanterns.send({ o: this.owner, l: this.mine }, { target: peerId }); } catch {}
+        this.lastPos = null;              // the newcomer needs to see where we stand
         // greet only people who stay (a newcomer passing through a full lake leaves within seconds)
         setTimeout(() => {
           try { if (room === this.room && this.room.getPeers()[peerId]) this.hooks.onJoin && this.hooks.onJoin(); } catch {}
         }, SETTLE_MS + 2000);
         this.lastCause = 'peer joined';
       };
-      room.onPeerLeave = () => { if (room === this.room) { this.refreshPeers(); this.lastCause = 'peer left'; } };
+      room.onPeerLeave = (peerId) => { if (room === this.room) { this.refreshPeers(); this.lastCause = 'peer left'; this.hooks.onLeave && this.hooks.onLeave(peerId); } };
       this.status = 'online';
       this.refreshPeers();
     } catch (e) {
@@ -135,15 +143,25 @@ export class Net {
       const netId = `${key}:${e.k}`;
       if (this.seen.has(netId)) continue;
       this.seen.add(netId);
-      this.hooks.onLantern({ netId, text: typeof e.t === 'string' ? e.t.slice(0, 30) : '', color: e.c, mode: e.m === 'sky' ? 'sky' : 'water' }, '', !firstSight);
+      this.hooks.onLantern({ netId, text: typeof e.t === 'string' ? e.t.slice(0, 30) : '', color: e.c, mode: e.m === 'sky' ? 'sky' : 'water' }, '', !firstSight, peerId);
     }
   }
 
-  sendHeart(netId) {
-    if (this.sendHeartAction && this.peers > 0) { try { this.sendHeartAction.send({ id: netId }); } catch {} }
+  sendHeart(netId, h) {
+    if (this.sendHeartAction && this.peers > 0) { try { this.sendHeartAction.send({ id: netId, h }); } catch {} }
   }
 
   poll() { if (this.room) this.refreshPeers(); }
+
+  // share where we stand: when we move more than a step, start a launch pose, or every few seconds anyway
+  sendPos(x, z, cer, scarf) {
+    if (!this.sendPosAction || this.peers === 0) return;
+    const t = Date.now(), L = this.lastPos;
+    if (L && !cer && Math.hypot(x - L.x, z - L.z) < 0.25 && t - L.t < 3000) return;
+    if (L && !cer && t - L.t < 200) return;
+    this.lastPos = { x, z, t };
+    try { this.sendPosAction.send({ x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: scarf }); } catch {}
+  }
 
   statusLine() {
     return `${BUILD} · lake ${this.lake || '-'} · peers ${this.peers} · ${this.status} · ${this.lastCause} · ${this.lastError}`;

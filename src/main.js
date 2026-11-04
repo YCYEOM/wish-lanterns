@@ -331,6 +331,9 @@ function glowTexture() {
 }
 const GLOW = glowTexture();
 const walker = createWalker(scene, shore, GLOW);
+// other players' characters, by peer id; their scarves avoid the player's own coral
+const others = new Map();
+const OTHER_SCARVES = [0x5fa6ee, 0x92d65c, 0xa66cf2, 0xf0c85a, 0x5fd6c8, 0xf0809c];
 const START = { x: 0, z: 16 };
 walker.reset(START.x, START.z);
 const keys = new Set();
@@ -702,6 +705,8 @@ function update(dt) {
   updateLanterns(dt);
   updateSparks(dt);
   updateStar(dt);
+  for (const r of others.values()) r.w.update(dt, NO_KEYS, T);
+  if (screen !== 'title') net.sendPos(walker.pos.x, walker.pos.z, null, myScarf);
   atmos.update(dt);
   scene.fog.density = 0.0042 + uniforms.fogK.value * 0.0095;
   scene.fog.color.copy(FOG_NIGHT).lerp(FOG_MIST, uniforms.fogK.value);
@@ -742,12 +747,16 @@ let netSeed = 99991;
 const nrnd = () => { netSeed = (netSeed * 1664525 + 1013904223) >>> 0; return netSeed / 4294967296; };
 let lastArrivalToast = 0;
 const net = new Net({
-  onLantern(e, who, fresh) {
+  onLantern(e, who, fresh, peerId) {
     if (save.hidden.includes(e.netId) || lanterns.some(l => l.id === e.netId)) return;
     const text = cleanMessage(e.text);
     const water = e.mode === 'water';
     let x, z, y;
-    if (fresh) { // launched just now by someone on the shore: comes in from the near edge
+    const by = fresh && peerId && others.get(peerId);
+    if (by) {      // launched by someone we can see: it sets off from where their character kneels or stands
+      const at = water ? shore.nearestShore(by.w.pos.x, by.w.pos.z, -1.4) : { x: by.w.pos.x, z: by.w.pos.z };
+      x = at.x; z = at.z; y = water ? 0 : 2.4;
+    } else if (fresh) { // launched just now by someone on the shore: comes in from the near edge
       // somewhere along the near shore, but out over the water and never right beside you (it used to rise
       // up on the sand, sometimes right in front of the camera)
       // prefer a spot you can see (inside the middle of the frame), 12-40 m away, so you catch it setting off
@@ -772,7 +781,8 @@ const net = new Net({
       y = water ? 0 : 6 + nrnd() * 50;
     }
     makeLantern({ id: e.netId, who, text, color: e.color, mode: e.mode, x, y, z,
-      vx: 0, vz: fresh ? (water ? -1.6 : -0.4) : 0, vy: water ? 0 : 0.5, alpha: 0, fadeIn: 2, fresh: fresh ? 5 : 0, hearts: 0 });
+      vx: by ? by.w.lakeDir().x * (water ? 1.6 : 0.4) : 0, vz: by ? by.w.lakeDir().z * (water ? 1.6 : 0.4) : fresh ? (water ? -1.6 : -0.4) : 0,
+      vy: water ? 0 : 0.5, alpha: 0, fadeIn: by ? 2.6 : 2, fresh: fresh ? 5 : 0, hearts: 0 });
     if (fresh) lanterns[lanterns.length - 1].grow = 0;   // starts small, like one just let go of
     if (fresh && screen !== 'title' && T - lastArrivalToast > 4) {
       lastArrivalToast = T;
@@ -780,7 +790,8 @@ const net = new Net({
       audio.chime([659.25, 880], 0.12);
     }
   },
-  onHeart(netId) {
+  onHeart(netId, h) {
+    if (h) { if (heartSeen.has(h)) return; heartSeen.add(h); }   // the same heart can arrive directly and via the relays
     const mineKey = net.myKey ? net.myKey + ':' : null;
     const localId = mineKey && netId.startsWith(mineKey) ? netId.slice(mineKey.length) : netId;
     const L = lanterns.find(l => l.id === localId);
@@ -795,12 +806,44 @@ const net = new Net({
   onLake(n) { // moved to another lake: drop the previous lake's people and their lanterns
     for (const L of [...lanterns]) if (!L.mine && L.id.includes(':')) { if (selected === L) closeCard(); removeLantern(L); }
     lakeNo = n; online = 1; updateStats();
+    for (const r of others.values()) r.w.dispose();
+    others.clear();
+    board.join(n);                     // the lanterns left on this lake today, and new ones live through the relays
   },
   onJoin() { if (screen !== 'title') toast('누군가 호숫가에 왔어요', 2400); },
+  // the other people on this lake walk the shore as characters of their own (scarf colour by person)
+  onPos(id, d) {
+    let r = others.get(id);
+    if (!r) {
+      if (others.size >= 9) return;
+      r = { w: createWalker(scene, shore, GLOW, { remote: true, scarf: OTHER_SCARVES[d.s % OTHER_SCARVES.length] }) };
+      r.w.reset(d.x, d.z); others.set(id, r);
+    }
+    if (Math.hypot(d.x - r.w.pos.x, d.z - r.w.pos.z) > 8) r.w.reset(d.x, d.z);   // jumped (reload, another path): no long walk
+    if (d.cer && !r.w.busy()) r.w.ceremony(d.cer);
+    else if (!d.cer) r.w.walkTo(d.x, d.z);
+  },
+  onLeave(id) { const r = others.get(id); if (r) { r.w.dispose(); others.delete(id); } },
   onStatus(msg) { toast(msg, 4000); },
 });
 net.setMine(save.mine);
-setInterval(() => { net.poll(); const d = $('netline'); if (d) d.textContent = net.statusLine(); }, 250);
+// the lake's memory (board.js): lanterns stay a day on public relays, so an empty lake is never empty
+const heartSeen = new Set();
+const myScarf = [...net.myKey].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7) % 6;
+// it loads in the background (with its signing library) so the first screen stays light
+let board = { status: 'off', join() {}, post() {}, heart() {} };
+import('./board.js').then(({ Board }) => {
+  board = new Board({
+    // with people connected directly, give their own message a moment to arrive first (it knows who launched it)
+    onLantern(e, fresh) { if (fresh && net.peers > 0) setTimeout(() => net.hooks.onLantern(e, '', fresh), 2500); else net.hooks.onLantern(e, '', fresh); },
+    onHeart(netId, h) { net.hooks.onHeart(netId, h); },
+  });
+  if (lakeNo) board.join(lakeNo);
+}).catch(() => {});
+// the connection line at the bottom is for debugging only: shown with ?debug in the address
+const SHOW_NETLINE = /[?&]debug\b/.test(location.search);
+if (!SHOW_NETLINE) $('netline').style.display = 'none';
+setInterval(() => { net.poll(); const d = $('netline'); if (d && SHOW_NETLINE) d.textContent = net.statusLine() + ` · board ${board.status}`; }, 250);
 let toastTimer = 0;
 function toast(msg, ms = 3200) {
   const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
@@ -896,6 +939,8 @@ function sendLantern() {
   if (save.mine.length > 12) save.mine.shift();
   save.launched++;
   persist(); updateStats(); net.setMine(save.mine);
+  board.post(net.myKey, { k: id, t: text, c: composeColor, m: composeMode });
+  net.sendPos(walker.pos.x, walker.pos.z, composeMode, myScarf);   // the others see us kneel or lift it
   $('compose').classList.add('hidden'); screen = 'lake';   // the button and tip come back when the pose ends
   $('launchBtn').classList.add('hidden'); $('tip').classList.add('hidden'); closeCard();
   $('msg').value = ''; onMsgInput();
@@ -937,7 +982,10 @@ $('heartBtn').onclick = () => {
     save.hearted.push(selected.id); save.hearts++;
     persist(); updateStats(); refreshHeart();
     burst(selected); audio.chime([783.99, 987.77, 1174.66]);
-    net.sendHeart(selected.mine ? net.netIdFor(selected.id) || selected.id : selected.id);
+    const hid = selected.mine ? net.netIdFor(selected.id) || selected.id : selected.id;
+    const h = net.myKey + Date.now().toString(36);
+    heartSeen.add(h);
+    net.sendHeart(hid, h); board.heart(hid, h);
   } else {
     burst(selected); audio.tick();
   }
@@ -1173,6 +1221,7 @@ window.__studio.swatch = () => { COLORS.forEach((c, i) => { makeLantern({ id: 's
 window.__studio.night = (k) => { nightOverride = k; return uniforms.nightK.value; };
 window.__studio.star = () => { nextStar = 0; return true; };
 window.__studio.wish = () => { const b = !$('wishBtn').classList.contains('hidden'); makeWish(); return b; };
+window.__studio.others = () => [...others.values()].map(r => ({ ...r.w.state(), busy: r.w.busy() }));
 window.__studio.ids = () => lanterns.map(l => l.id);
 window.__studio.dbg = () => { const L = lanterns[lanterns.length - 1]; const h = walker.hands(); return { busy: walker.busy(), held: !!L.held, t: L.held && L.held.t, L: [L.x, L.y, L.z].map(v => +v.toFixed(2)), a: +L.alpha.toFixed(2), sc: +L.group.scale.x.toFixed(2), hands: [h.x, h.y, h.z].map(v => +v.toFixed(2)), cam: camera.position.toArray().map(v => +v.toFixed(1)), cine: !!cine }; };
 // test hooks: freeze the live loop and advance it in fixed 1/60 s steps (camera included)
