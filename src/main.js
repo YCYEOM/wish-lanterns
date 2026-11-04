@@ -259,6 +259,10 @@ const walker = createWalker(scene, shore, GLOW);
 const START = { x: 0, z: 16 };
 walker.reset(START.x, START.z);
 const keys = new Set();
+// on a touch screen the tip speaks of taps and drags, not keys
+if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+  document.getElementById('tip').textContent = '땅을 눌러 걸어요 · 화면을 끌어 둘러봐요 · 등불을 누르면 한마디가 보여요';
+}
 
 function gradientColors(geo, color, top, bottom) {
   const pos = geo.attributes.position; const cols = new Float32Array(pos.count * 3);

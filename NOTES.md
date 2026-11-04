@@ -70,5 +70,10 @@ https://ycyeom.github.io/wish-lanterns/
    `lamp` hex in data.js for the lit paper (pastels clipped to white); the UI swatch `css` is matched to how the lit lantern reads. The grass bank's
    stretched streak noise is now isotropic and blends into the broad patches past ~12-40 m.
    Test: `.studio/look5.mjs <tag>` (`__studio.swatch()` lines up all colours).
-6. Not tested on a real phone.
+6. Phone check (emulated, not a real device yet): `.studio/mobile.mjs` runs iPhone 13 / SE / Pixel 7 portrait and
+   iPhone 13 / SE landscape with real touch: tap-walk, one-finger drag turn, launch button, compose, send all pass.
+   Fixed: compose overflowed in landscape (now max-height + scroll, compact at <=520 px / <=380 px tall, presets one
+   scrolling row), launch button wrapped to 3 lines (nowrap), tip ran off screen (wraps; touch devices get a
+   tap/drag tip instead of WASD/Q-E), stats pill ran under the buttons (ellipsis), safe-area insets (viewport-fit=cover).
+   Still untested: the on-screen keyboard over the compose panel and real-device frame rate.
 7. Ideas: time-of-night drift, shooting-star wish.

@@ -88,3 +88,42 @@ body.hud-off #netline { display: none; }
 
 .icon-btn.invite { right: 60px; }
 #toast { max-width: calc(100vw - 32px); white-space: normal; text-align: center; word-break: break-all; }
+
+/* ---- phones: keep everything on screen, one-line button, scrollable panels on short screens ---- */
+.panel { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
+#stats { max-width: calc(100vw - 130px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tip { white-space: normal; text-align: center; width: max-content; max-width: calc(100vw - 32px); line-height: 1.45;
+  bottom: calc(96px + env(safe-area-inset-bottom)); }
+.main-btn { white-space: nowrap; max-width: calc(100vw - 32px); }
+#launchBtn { bottom: calc(30px + env(safe-area-inset-bottom)); }
+@media (max-width: 420px) {
+  #stats { font-size: 12px; padding: 6px 10px; left: 12px; }
+  #launchBtn { font-size: 15.5px; padding: 13px 22px; letter-spacing: .02em; }
+  #tip { font-size: 12px; bottom: calc(86px + env(safe-area-inset-bottom)); }
+  .panel { padding: 20px 18px 18px; }
+  .sw { width: 34px; height: 34px; }
+  #swatches { gap: 10px; }
+}
+@media (max-height: 520px) {
+  .panel { padding: 14px 20px 14px; width: min(560px, calc(100vw - 32px)); }
+  .panel h2 { font-size: 17px; margin-bottom: 4px; }
+  .label { margin: 8px 0 6px; }
+  #presets { margin-top: 7px; }
+  .chip { padding: 4px 10px; }
+  .mode { padding: 8px; }
+  .main-btn.wide { margin-top: 10px; padding: 11px 20px; }
+  #launchBtn { bottom: calc(14px + env(safe-area-inset-bottom)); padding: 11px 24px; }
+  #tip { bottom: calc(68px + env(safe-area-inset-bottom)); }
+  #toast { top: 14%; }
+}
+@media (max-height: 380px) {
+  .panel h2 { font-size: 15px; margin-bottom: 0; }
+  .label { margin: 6px 0 4px; font-size: 12px; }
+  .sw { width: 28px; height: 28px; }
+  #msg { padding: 8px 54px 8px 12px; font-size: 14px; }
+  #presets { flex-wrap: nowrap; overflow-x: auto; margin-top: 6px; scrollbar-width: none; }
+  #presets::-webkit-scrollbar { display: none; }
+  .chip { flex: none; padding: 3px 9px; font-size: 12px; }
+  .mode { padding: 6px; font-size: 13px; }
+  .main-btn.wide { margin-top: 8px; padding: 9px 20px; font-size: 15px; }
+}
