@@ -47,6 +47,18 @@ message, send ♡ (sparkle burst + chime), or hide it on your own screen. No sco
 - Studio contract `src/studio.js` + demos `genex-cover`/`genex-clip` (`src/cover-shot.js`) kept for the Genex preview.
 - Repo: https://github.com/YCYEOM/wish-lanterns (public). Live: https://ycyeom.github.io/wish-lanterns/ (Pages via Actions).
 
+## Walker on the lakeshore (v3)
+- The player walks a small hooded, lantern-carrying traveller along a moonlit beach and launches lanterns from the water's edge.
+- `src/shore.js`: round lake (centre 0,-70, r 80) with a walkable beach ring — groundY/walkable/waterDist/nearestShore API,
+  textured sand/foam/grass shader, dressing (pier, stone lanterns, candle cairns, rocks, driftwood, reeds, trees).
+- `src/walker.js`: character model + walk/idle animation + held lantern light; WASD/arrows (W = toward the lake),
+  tap/click ground to walk (tap water = walk to its edge); follow camera always faces the lake (no mouse parallax).
+- `src/main.js`: tap a lantern = read card, else walk; launch button walks to the shore then opens the panel; lanterns
+  set off from the character. Harness-injected keys are merged; player() reports the follow camera as the "eyes".
+- Verified: playtests for shore and walker passed on 9062c37; tap accuracy 28/28.
+- Known: no kneel/release animation or camera follow on launch; sideways walking can stick at the water's edge or the
+  back boundary; the character passes through stone lanterns; can't walk onto the pier.
+
 ## Current state
 v1 playable end-to-end: title, compose, launch (water/sky), read card, ♡, hide, stats, mute, ambience.
 Verified via headless Chrome screenshots (`.studio/shot.mjs`, files served via request interception).
