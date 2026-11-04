@@ -16,7 +16,7 @@ export const WEATHER = {
   cloudy: { line: '오늘 서울은 구름이 끼었어요', emoji: '☁️', cloudK: 1.0, rainK: 0, fogK: 0.12, rain: 0, snow: 0 },
   rain: { line: '오늘 서울은 비가 와요', emoji: '🌧', cloudK: 1.0, rainK: 1, fogK: 0.3, rain: 1, snow: 0 },
   snow: { line: '오늘 서울은 눈이 와요', emoji: '❄️', cloudK: 0.9, rainK: 0, fogK: 0.25, rain: 0, snow: 1 },
-  fog: { line: '오늘 서울은 안개가 끼었어요', emoji: '🌫', cloudK: 0.4, rainK: 0, fogK: 1, rain: 0, snow: 0 },
+  fog: { line: '오늘 서울은 안개가 끼었어요', emoji: '🌫', cloudK: 0.7, rainK: 0, fogK: 1, rain: 0, snow: 0 },
 };
 
 // WMO weather codes (Open-Meteo): 0-1 clear, 2-3 cloud, 45/48 fog, 51-67 & 80-82 & 95-99 rain, 71-77 & 85-86 snow
