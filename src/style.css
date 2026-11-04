@@ -2,7 +2,7 @@
 html, body { width: 100%; height: 100%; overflow: hidden; background: #050816; color: #fbefdc;
   font-family: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
   -webkit-user-select: none; user-select: none; }
-#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 #ui { position: fixed; inset: 0; pointer-events: none; }
 #ui > * { pointer-events: auto; }
 .hidden { display: none !important; }

@@ -473,8 +473,11 @@ function updateLanterns(dt) {
     const sel = L.selected ? 1 + 0.25 * Math.sin(T * 5) + 0.4 : L === hovered ? 1.35 : 1;
     const fresh = 1 + L.fresh * 0.25;
     L.group.position.set(L.x, L.y, L.z);
-    L.mat.opacity = 0.96 * L.alpha;
-    L.glow.material.opacity = 0.8 * flick * L.alpha * Math.min(1.6, sel);
+    // never let a lantern fill the lens: fade it out as it comes right up to the camera
+    const dc = L.held ? 9 : Math.hypot(L.x - camera.position.x, L.y + 0.4 - camera.position.y, L.z - camera.position.z);
+    const near = Math.max(0, Math.min(1, (dc - 1.6) / 2.4));
+    L.mat.opacity = 0.96 * L.alpha * near;
+    L.glow.material.opacity = 0.8 * flick * L.alpha * Math.min(1.6, sel) * near;
     L.glow.scale.setScalar((L.mode === 'water' ? 3.4 : 3.6) * sel * fresh);
     if (L.mode === 'water') {
       L.refl.position.set(L.x, -2.2, L.z);
@@ -540,6 +543,9 @@ function updateCamera(dt) {
     pointer.sy += (pointer.y - pointer.sy) * Math.min(1, dt * 1.5);
     const dy = pointer.sy > 0 ? pointer.sy * 0.35 : pointer.sy; // looking down is gentler than looking up
     // no mouse parallax on the follow camera: it made lanterns slide away from the cursor reaching for them
+    const hk = heldKeys();
+    if (hk.has('KeyQ')) walker.turnView(dt * 1.6);
+    if (hk.has('KeyE')) walker.turnView(-dt * 1.6);
     walker.updateCamera(camera, dt, { x: 0, y: 0 });
     if (cine) applyCine(dt);
     followPos.copy(camera.position);
@@ -555,7 +561,7 @@ const KEY_ALIAS = { w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD', W: 'KeyW', A: 'K
 function heldKeys() {
   merged.clear();
   for (const k of keys) merged.add(k);
-  try { const inj = window.__studio?.injectInput?.({}); if (inj) for (const k of inj.keys) { const c = KEY_ALIAS[k] || k; if (MOVE_KEYS.has(c)) merged.add(c); } } catch {}
+  try { const inj = window.__studio?.injectInput?.({}); if (inj) for (const k of inj.keys) { const c = KEY_ALIAS[k] || k; if (MOVE_KEYS.has(c) || TURN_KEYS.has(c)) merged.add(c); } } catch {}
   return merged;
 }
 // where the follow camera stands: the "player eyes" for the studio's eye cameras in this third-person game
@@ -621,9 +627,15 @@ const net = new Net({
     const water = e.mode === 'water';
     let x, z, y;
     if (fresh) { // launched just now by someone on the shore: comes in from the near edge
-      const a = Math.PI / 2 + (nrnd() - 0.5) * 1.0;   // somewhere along the near shore
-      const e2 = shore.nearestShore(LAKE.cx + Math.cos(a) * 50, LAKE.cz + Math.sin(a) * 50, water ? -1.5 : 2);
-      x = e2.x; z = e2.z; y = water ? 0 : 1.2;
+      // somewhere along the near shore, but out over the water and never right beside you (it used to rise
+      // up on the sand, sometimes right in front of the camera)
+      let e2;
+      for (let i = 0; i < 12; i++) {
+        const a = Math.PI / 2 + (nrnd() - 0.5) * 1.0;
+        e2 = shore.nearestShore(LAKE.cx + Math.cos(a) * 50, LAKE.cz + Math.sin(a) * 50, water ? -1.5 : -3.5);
+        if (Math.hypot(e2.x - walker.pos.x, e2.z - walker.pos.z) > 12) break;
+      }
+      x = e2.x; z = e2.z; y = water ? 0 : 1.6;
     } else {
       for (let i = 0; i < 30; i++) {
         x = (nrnd() * 2 - 1) * LAKE.rx; z = LAKE.cz + (nrnd() * 2 - 1) * LAKE.rz;
@@ -633,6 +645,7 @@ const net = new Net({
     }
     makeLantern({ id: e.netId, who, text, color: e.color, mode: e.mode, x, y, z,
       vx: 0, vz: fresh ? (water ? -1.6 : -0.4) : 0, vy: water ? 0 : 0.5, alpha: 0, fadeIn: 2, fresh: fresh ? 5 : 0, hearts: 0 });
+    if (fresh) lanterns[lanterns.length - 1].grow = 0;   // starts small, like one just let go of
     if (fresh && screen !== 'title' && T - lastArrivalToast > 4) {
       lastArrivalToast = T;
       toast(text ? `누군가 「${text}」 등불을 띄웠어요` : '누군가 조용히 등불을 띄웠어요');
@@ -839,14 +852,40 @@ function pickLantern(clientX, clientY) {
   }
   return best;
 }
+// a short press is a tap (open a lantern / walk there); pressing and dragging turns the view instead
+let press = null;
+const DRAG_PX = 8;
+function tapAt(cx, cy) {
+  const L = pickLantern(cx, cy);
+  if (L) { openCard(L); return; }
+  if (screen === 'card') closeCard();
+  walkToScreenPoint(cx, cy);
+}
 canvas.addEventListener('pointerdown', (e) => {
   if (screen === 'title') { startGame(); return; }
   if (screen === 'compose') { closePanel('compose'); return; }
-  const L = pickLantern(e.clientX, e.clientY);
-  if (L) { openCard(L); return; }
-  if (screen === 'card') closeCard();
-  walkToScreenPoint(e.clientX, e.clientY);
+  if (press) return;                                   // a second finger: ignore
+  press = { id: e.pointerId, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, drag: false };
+  try { canvas.setPointerCapture(e.pointerId); } catch {}
 });
+canvas.addEventListener('pointermove', (e) => {
+  if (!press || e.pointerId !== press.id) return;
+  if (!press.drag && Math.hypot(e.clientX - press.x, e.clientY - press.y) > DRAG_PX) { press.drag = true; canvas.style.cursor = 'grabbing'; }
+  if (press.drag) {
+    const k = 3.2 / Math.max(600, window.innerWidth);   // a full-width drag turns the view about half round
+    walker.turnView(-(e.clientX - press.lx) * k, (e.clientY - press.ly) * k * 0.8);
+  }
+  press.lx = e.clientX; press.ly = e.clientY;
+});
+function endPress(e, cancel) {
+  if (!press || e.pointerId !== press.id) return;
+  const p = press; press = null;
+  canvas.style.cursor = 'default';
+  if (!p.drag && !cancel && (screen === 'lake' || screen === 'card')) tapAt(p.x, p.y);
+}
+canvas.addEventListener('pointerup', (e) => endPress(e, false));
+canvas.addEventListener('pointercancel', (e) => endPress(e, true));
+canvas.addEventListener('dblclick', () => walker.turnView(null));   // double-click: back behind the character
 const raycaster = new THREE.Raycaster();
 const waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const deckPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -shore.PIER_DECK);
@@ -872,13 +911,16 @@ function walkToScreenPoint(cx, cy) {
 window.addEventListener('pointermove', (e) => {
   pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
   pointer.y = (e.clientY / window.innerHeight) * 2 - 1;
-  if (screen === 'lake' || screen === 'card') { hovered = pickLantern(e.clientX, e.clientY); canvas.style.cursor = hovered ? 'pointer' : 'default'; }
+  if ((screen === 'lake' || screen === 'card') && !(press && press.drag)) { hovered = pickLantern(e.clientX, e.clientY); if (!press) canvas.style.cursor = hovered ? 'pointer' : 'default'; }
   else hovered = null;
 });
+const TURN_KEYS = new Set(['KeyQ', 'KeyE']);
 const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 window.addEventListener('keydown', (e) => {
   if (e.target && e.target.tagName === 'INPUT') return;
   if (MOVE_KEYS.has(e.code)) { keys.add(e.code); if (e.code.startsWith('Arrow')) e.preventDefault(); }
+  if (TURN_KEYS.has(e.code)) keys.add(e.code);
+  if (e.code === 'KeyR' && screen !== 'title') walker.turnView(null);
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
@@ -981,12 +1023,14 @@ installStudio({
 });
 // keep our extra helpers next to the contract's own verbs
 window.__studio.screenOf = (id) => { const L = lanterns.find(l => l.id === id); if (!L) return null; const v = new THREE.Vector3(L.x, L.y + (L.mode === 'water' ? 0.63 : 0.85), L.z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight, dist: +camera.position.distanceTo(new THREE.Vector3(L.x, L.y, L.z)).toFixed(1) }; };
+window.__studio.view = () => ({ ...walker.view, dir: walker.viewDir(), st: walker.state() });
 window.__studio.ids = () => lanterns.map(l => l.id);
 window.__studio.dbg = () => { const L = lanterns[lanterns.length - 1]; const h = walker.hands(); return { busy: walker.busy(), held: !!L.held, t: L.held && L.held.t, L: [L.x, L.y, L.z].map(v => +v.toFixed(2)), a: +L.alpha.toFixed(2), sc: +L.group.scale.x.toFixed(2), hands: [h.x, h.y, h.z].map(v => +v.toFixed(2)), cam: camera.position.toArray().map(v => +v.toFixed(1)), cine: !!cine }; };
 // test hooks: freeze the live loop and advance it in fixed 1/60 s steps (camera included)
 let frozen = false;
 window.__studio.freeze = (on = true) => { frozen = on; };
 window.__studio.advance = (ms) => { for (let i = 0, n = Math.round(ms / (1000 / 60)); i < n; i++) { update(1 / 60); render(1 / 60); } };
+window.__studio.fakeArrival = (mode = 'sky') => { net.hooks.onLantern({ netId: 'x:' + Date.now(), text: 'test', color: 'amber', mode }, 'tester', true); return lanterns[lanterns.length - 1].id; };
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];
 

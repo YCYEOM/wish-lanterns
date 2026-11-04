@@ -192,6 +192,14 @@ export function createWalker(scene, shore, glowTex) {
   let lastVx = 0, lastVz = 0, idleT = 0, flareS = 0, raise = 0;
   const tailLag = [0, 0];
   const cam = { pos: new THREE.Vector3(), look: new THREE.Vector3(), init: false };
+  // hand-turned view: yaw swings the camera round the character (0 = behind it, facing the lake),
+  // pitch raises it (+) or brings it down toward eye level (-); both eased toward the wanted values
+  const view = { yaw: 0, pitch: 0, wYaw: 0, wPitch: 0 };
+  const YAW_MAX = 2.4, PITCH_MIN = -0.55, PITCH_MAX = 0.6;
+  function viewDir() {                   // unit {x, z}: where the camera looks (the lake direction turned by the view yaw)
+    const f = lakeDir(), c = Math.cos(view.yaw), s = Math.sin(view.yaw);
+    return { x: f.x * c - f.z * s, z: f.x * s + f.z * c };
+  }
   // launch ceremony: kneel to set a lantern on the water, or lift it overhead for the sky
   // { mode, t, dur } while running; poses come from the two eased amounts below
   let cer = null, kneel = 0, lift = 0;
@@ -326,6 +334,7 @@ export function createWalker(scene, shore, glowTex) {
       pos.set(x, groundY(x, z), z); yaw = Math.atan2(-lakeDir().x, -lakeDir().z);
       vel.x = vel.z = 0; lastVx = lastVz = 0; turnRate = 0; swing = swingV = 0; walkAmt = 0; flareS = 0; raise = 0; idleT = 0;
       target = null; onArrive = null; cam.init = false; moving = false; cer = null; kneel = lift = 0;
+      view.yaw = view.pitch = view.wYaw = view.wPitch = 0;
     },
     // start the launch pose; returns its timing { dur, release } (seconds)
     ceremony(mode) {
@@ -352,8 +361,16 @@ export function createWalker(scene, shore, glowTex) {
     },
     stop() { target = null; onArrive = null; },
     lakeDir,
+    viewDir,
+    // turn the view by hand: dYaw/dPitch in radians; turnView(null) eases it back behind the character
+    turnView(dYaw, dPitch = 0) {
+      if (dYaw === null) { view.wYaw = 0; view.wPitch = 0; return; }
+      view.wYaw = Math.max(-YAW_MAX, Math.min(YAW_MAX, view.wYaw + dYaw));
+      view.wPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, view.wPitch + dPitch));
+    },
+    get view() { return { yaw: +view.wYaw.toFixed(3), pitch: +view.wPitch.toFixed(3) }; },
     update(dt, keys, T) {
-      const f = lakeDir();                 // "forward" is toward the lake, as the camera looks
+      const f = viewDir();                 // "forward" is where the camera looks (the lake, unless turned)
       const rx = -f.z, rz = f.x;           // screen-right
       let ix = 0, iz = 0;
       if (keys.has('KeyW') || keys.has('ArrowUp')) { ix += f.x; iz += f.z; }
@@ -397,15 +414,19 @@ export function createWalker(scene, shore, glowTex) {
       return moving;
     },
     updateCamera(camera, dt, look = { x: 0, y: 0 }) {
-      const f = lakeDir();
+      const ve = 1 - Math.exp(-dt * 10);
+      view.yaw += (view.wYaw - view.yaw) * ve; view.pitch += (view.wPitch - view.pitch) * ve;
+      const f = viewDir();
       const rx = -f.z, rz = f.x;
       // behind and above the character, looking out over the lake; it stands in the lower-middle
-      // third of the frame, well clear of the launch button at the bottom
-      const back = 6.9, up = 3.8;
+      // third of the frame, well clear of the launch button at the bottom. Pitch lifts it higher and
+      // closer to overhead, or lowers it to look up at the sky
+      const back = 6.9 - view.pitch * 1.2, up = 3.8 + view.pitch * 4.2;
+      const tilt = view.pitch < 0 ? -view.pitch * 9 : 0;   // looking up toward the sky lanterns
       const lean = Math.max(-1, Math.min(1, turnRate * 0.25)) * Math.min(1, Math.hypot(vel.x, vel.z) / SPEED);
       const want = new THREE.Vector3(pos.x - f.x * back + rx * (look.x * 1.2 - lean * 0.4), 0, pos.z - f.z * back + rz * (look.x * 1.2 - lean * 0.4));
       want.y = Math.max(pos.y + up - look.y * 0.6, groundY(want.x, want.z) + 1.2);
-      const lookAt = new THREE.Vector3(pos.x + f.x * 10 + rx * look.x * 3, pos.y - 0.8 - look.y * 1.5, pos.z + f.z * 10 + rz * look.x * 3);
+      const lookAt = new THREE.Vector3(pos.x + f.x * 10 + rx * look.x * 3, pos.y - 0.8 - look.y * 1.5 + tilt, pos.z + f.z * 10 + rz * look.x * 3);
       if (!cam.init) { cam.pos.copy(want); cam.look.copy(lookAt); cam.init = true; }
       const k = 1 - Math.exp(-dt * 4);
       cam.pos.lerp(want, k); cam.look.lerp(lookAt, 1 - Math.exp(-dt * 5));

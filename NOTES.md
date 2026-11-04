@@ -56,7 +56,12 @@ https://ycyeom.github.io/wish-lanterns/
    away from the end lamp (`PIER_LAMP`).
 3. ~~Walks through stone lanterns~~ stale: `blocked()` in shore.js already stops the character at stone lanterns
    (0.55 m) and candle cairns (0.4 m); only the tiny tea-light groups are stepped over on purpose.
-4. Camera can't be turned by hand; a sky lantern first appears huge right in front of the camera.
+4. ~~Camera / huge sky lantern~~ done: drag on the canvas (mouse or one finger, >8 px; a shorter press is still a tap)
+   or hold Q/E to swing the view round the character (yaw +-2.4 rad); drag up/down lowers it to look up at the
+   sky or lifts it higher. R or double-click puts it back behind the character. WASD now moves relative to where the
+   camera looks (`walker.viewDir()`). Remote freshly-launched lanterns appear out over the water, >12 m from you,
+   and grow in small (they used to rise on the sand, sometimes in your face); any lantern fades out within ~1.6-4 m
+   of the camera. Tests: `.studio/view.mjs`, `.studio/arrive.mjs` (`__studio.fakeArrival(mode)`).
 5. Lake surface shows stripe-like bands; lilac/sky lanterns read pale; back grass looks smeared.
 6. Not tested on a real phone.
 7. Ideas: time-of-night drift, shooting-star wish.
