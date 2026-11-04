@@ -48,7 +48,12 @@ https://ycyeom.github.io/wish-lanterns/
    main.js: close 3/4 shot from the left, then a follow shot after your lantern, ~7 s; movement input is blocked during
    the pose, and moving afterwards cuts the shot short. Test hooks `__studio.freeze()/advance(ms)` step it frame-exactly
    (`.studio/cer.mjs [pier]`).
-2. Sideways walking can stick at the water's edge or the back boundary (stepping back frees it).
+2. ~~Sideways sticking~~ done: `tryMove` slides along any edge by turning the step up to ~77° (keeping ≥45% pace);
+   a square-on turn only when it climbs back toward dry land (the pier-root corner). Beside the pier's root the 0.5 m
+   water margin eases to ~0 (`walkable`), so there is no pocket there. Pushing straight at the water or the back of the
+   beach still just stops. Test: `.studio/slide.mjs` (before: holding D at the water moved 0 m).
+   Also: kneel now uses a knee joint (legs are thigh + knee group); on the pier the launch shot comes from the side
+   away from the end lamp (`PIER_LAMP`).
 3. The character walks through stone lanterns.
 4. Camera can't be turned by hand; a sky lantern first appears huge right in front of the camera.
 5. Lake surface shows stripe-like bands; lilac/sky lanterns read pale; back grass looks smeared.

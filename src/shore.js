@@ -87,7 +87,12 @@ function onDeck(x, z) {
 export function walkable(x, z) {
   if (onDeck(x, z)) return true;                          // out along the pier deck, over the shallows
   const d = waterDist(x, z);
-  if (d < 0.5 || d > 30) return false;
+  // the beach keeps 0.5 m back from the water, except beside the pier's root, where that margin eases to
+  // nothing so walking along the waterline steps on and off the deck without a pocket to get caught in
+  const pl = pierLocal(x, z);
+  const ease = pl.d > PIER.d1 && pl.d < PIER.d0 + 1.5 ? Math.max(0, Math.min(1, (Math.abs(pl.s) - PIER.half) / 3)) : 1;
+  if (d < Math.max(0.03, 0.5 * ease)) return false;
+  if (d > 30) return false;
   if (blocked(x, z)) return false;                        // stone lanterns and cairns
   return z > -40;
 }
@@ -102,6 +107,8 @@ export function pierLaunchPoint(x, z) {
   return { x: LAKE.cx + ca * (r0 + d) - sa * p.s, z: LAKE.cz + sa * (r0 + d) + ca * p.s };
 }
 export const PIER_DECK = PIER.deck;
+// where the lamp at the pier's end stands (filled in when the pier is built)
+export const PIER_LAMP = { x: 0, z: 0 };
 export function nearestShore(x, z, d = 0.8) {
   const dx = x - LAKE.cx, dz = z - LAKE.cz;
   const a = Math.atan2(dz, dx);
@@ -565,6 +572,7 @@ export function buildShore(scene, uniforms) {
   instanced(dress, boxGeo.clone(), woodMat, beams, 'pier');
   instanced(dress, pileGeo, woodMat, piles, 'pier');
   const lampAt = at(PIER.d1 + 0.45, 0.4);
+  PIER_LAMP.x = lampAt.x; PIER_LAMP.z = lampAt.z;
   const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.3, 8), new THREE.MeshBasicMaterial({ color: 0xffb35c }));
   lamp.position.set(lampAt.x, PIER.deck + 1.42, lampAt.z); lamp.userData.tag = 'pier-lamp';
   const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.16, 0.08, 8), new THREE.MeshBasicMaterial({ color: 0x1a120c }));

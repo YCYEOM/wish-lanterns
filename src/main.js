@@ -504,7 +504,11 @@ function applyCine(dt) {
   // then, from the release, the follow shot after the lantern
   const rel = C.mode === 'water' ? 1.7 : 1.35;
   const q = sm(rel - 0.2, rel + 1.6, C.t);
-  const sx = p.x - rx * 3.0 - f.x * 2.6, sz = p.z - rz * 3.0 - f.z * 2.6;
+  if (C.side === undefined) {          // from the left, unless the pier lamp would stand between camera and lantern
+    const onPier = shore.pierLaunchPoint(p.x, p.z);
+    C.side = onPier && ((shore.PIER_LAMP.x - p.x) * rx + (shore.PIER_LAMP.z - p.z) * rz) < 0 ? 1 : -1;
+  }
+  const sx = p.x + C.side * rx * 3.0 - f.x * 2.6, sz = p.z + C.side * rz * 3.0 - f.z * 2.6;
   const side = { x: sx, y: p.y + (C.mode === 'water' ? 1.5 : 1.2), z: sz };
   const sideLook = { x: p.x + f.x * 0.9, y: p.y + (C.mode === 'water' ? 0.55 : 1.5), z: p.z + f.z * 0.9 };
   if (C.mode === 'water') {           // back and up, looking out at the lantern on the water

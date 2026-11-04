@@ -50,9 +50,14 @@ export function createWalker(scene, shore, glowTex) {
   // legs (pivot at the hip), short and rounded, with little boots that point forward
   function leg(side) {
     const g = new THREE.Group(); g.position.set(0.085 * side, 0, 0);
-    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.36, 7), pants); thigh.position.y = -0.2; g.add(thigh);
-    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.19), boots); boot.position.set(0, -0.43, -0.03); g.add(boot);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.062, 7, 5), boots); cap.position.set(0, -0.4, 0.02); g.add(cap);
+    // thigh, then a knee joint carrying the shin and boot (bent only when kneeling)
+    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.065, 0.22, 7), pants); thigh.position.y = -0.1; g.add(thigh);
+    const knee = new THREE.Group(); knee.position.y = -0.2; g.add(knee);
+    const kj = new THREE.Mesh(new THREE.SphereGeometry(0.064, 7, 5), pants); knee.add(kj);
+    const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.064, 0.06, 0.18, 7), pants); shin.position.y = -0.09; knee.add(shin);
+    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.19), boots); boot.position.set(0, -0.23, -0.03); knee.add(boot);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.062, 7, 5), boots); cap.position.set(0, -0.2, 0.02); knee.add(cap);
+    g.userData.knee = knee;
     body.add(g);
     return g;
   }
@@ -197,10 +202,25 @@ export function createWalker(scene, shore, glowTex) {
     const dx = LAKE.cx - pos.x, dz = LAKE.cz - pos.z, l = Math.hypot(dx, dz) || 1;
     return { x: dx / l, z: dz / l };
   }
+  // move, or slide along whatever edge is in the way (water line, back of the beach, a stone lantern):
+  // try the step turned a little either way, shortened by how far it is turned, before giving up
+  const SLIDE = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.35, 1.57];
+  let slideSide = 1;
   function tryMove(nx, nz) {
     if (walkable(nx, nz)) { pos.x = nx; pos.z = nz; return true; }
-    if (walkable(nx, pos.z)) { pos.x = nx; return true; }
-    if (walkable(pos.x, nz)) { pos.z = nz; return true; }
+    const dx = nx - pos.x, dz = nz - pos.z;
+    for (const a of SLIDE) {
+      const k = 0.45 + 0.55 * Math.cos(a);   // keep most of the pace while sliding round a curve
+      for (const sgn of [slideSide, -slideSide]) {
+        const c = Math.cos(a * sgn), sn = Math.sin(a * sgn);
+        const tx = pos.x + (dx * c - dz * sn) * k, tz = pos.z + (dx * sn + dz * c) * k;
+        if (!walkable(tx, tz)) continue;
+        // a square-on turn only to climb back toward dry land (out of the corner where the pier meets the
+        // water); pushing straight at the water's edge or the back of the beach should stop, not drift
+        if (a > 1.4 && waterDist(tx, tz) <= waterDist(pos.x, pos.z) + 0.005) continue;
+        pos.x = tx; pos.z = tz; slideSide = sgn; return true;
+      }
+    }
     return false;
   }
   const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -222,6 +242,8 @@ export function createWalker(scene, shore, glowTex) {
 
     // legs and arms
     legL.rotation.x = s * 0.75 * w; legR.rotation.x = -s * 0.75 * w;
+    // a little knee bend on the back-swing of each stride
+    legL.userData.knee.rotation.x = -Math.max(0, -s) * 0.5 * w; legR.userData.knee.rotation.x = -Math.max(0, s) * 0.5 * w;
     const breathe = Math.sin(T * 1.9) * (1 - w);
     armL.rotation.x = -s * 0.6 * w + breathe * 0.03;
     armL.rotation.z = -0.18 - 0.05 * w;
@@ -245,13 +267,16 @@ export function createWalker(scene, shore, glowTex) {
       armL.rotation.z = armL.rotation.z * (1 - kneel - lift) + (kneel * 0.32 - lift * 0.4);
       armR.rotation.x = armR.rotation.x * (1 - kneel - lift) + kneel * (0.45 + reach * 0.3) + lift * 2.95;
       armR.rotation.z = armR.rotation.z * (1 - kneel - lift) + (kneel * -0.32 + lift * 0.4);
-      legL.rotation.x = 1.45 * kneel;          // front knee up
-      legR.rotation.x = -0.5 * kneel;         // back knee down
+      // one-knee kneel: front thigh level and shin straight down; back thigh down, knee on the ground, shin trailing
+      // (the body leans forward by `lean`, which the hips undo so the legs stay true to the ground)
+      const lean = 0.35 * kneel;
+      legL.rotation.x = legL.rotation.x * (1 - kneel) + 1.5 * kneel + lean; legL.userData.knee.rotation.x = -1.5 * kneel;
+      legR.rotation.x = legR.rotation.x * (1 - kneel) - 0.15 * kneel + lean; legR.userData.knee.rotation.x = -1.45 * kneel;
     }
 
     // body: bob twice per stride, roll into turns, lean into speed, breathe when still
-    body.position.y = 0.5 + Math.abs(c) * 0.055 * w + breathe * 0.008 - kneel * 0.27 + lift * 0.03;
-    body.rotation.x = -0.12 * w - Math.max(-0.1, Math.min(0.1, aFwd * 0.012)) - kneel * 0.55 + lift * 0.08;
+    body.position.y = 0.5 + Math.abs(c) * 0.055 * w + breathe * 0.008 - kneel * 0.26 + lift * 0.03;
+    body.rotation.x = -0.12 * w - Math.max(-0.1, Math.min(0.1, aFwd * 0.012)) - kneel * 0.35 + lift * 0.08;
     body.rotation.z = s * 0.04 * w - Math.max(-0.25, Math.min(0.25, turnRate * 0.05)) * w;
     body.rotation.y = s * 0.08 * w;
     mantle.scale.y = 0.55 + breathe * 0.02;
