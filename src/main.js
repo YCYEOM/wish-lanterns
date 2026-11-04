@@ -91,7 +91,7 @@ vec3 skyColor(vec3 dir, float t, float starAmt){
     vec3 cd = vec3(dir.x, dir.y * 2.6, dir.z) * 2.2 + vec3(t * 0.006, 0.0, t * 0.003);
     float cn = fbm(cd) * 0.75 + fbm(cd * 2.7 + 5.0) * 0.25;
     cl = smoothstep(0.62 - 0.44 * cloudK, 0.86 - 0.26 * cloudK, cn) * smoothstep(-0.02, 0.06, h);
-    cl = min(1.0, cl * (0.45 + 0.75 * cloudK) + cloudK * 0.22 * (1.0 - smoothstep(0.0, 0.4, h)));
+    cl = min(1.0, cl * (0.45 + 0.75 * cloudK) + cloudK * (0.22 + 0.3 * smoothstep(0.7, 1.0, cloudK)) * (1.0 - 0.5 * smoothstep(0.0, 0.6, h)));
     col *= 1.0 - 0.6 * cl * band;
   }
   vec3 p = dir * 230.0;
