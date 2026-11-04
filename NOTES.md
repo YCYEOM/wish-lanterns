@@ -54,7 +54,8 @@ https://ycyeom.github.io/wish-lanterns/
    beach still just stops. Test: `.studio/slide.mjs` (before: holding D at the water moved 0 m).
    Also: kneel now uses a knee joint (legs are thigh + knee group); on the pier the launch shot comes from the side
    away from the end lamp (`PIER_LAMP`).
-3. The character walks through stone lanterns.
+3. ~~Walks through stone lanterns~~ stale: `blocked()` in shore.js already stops the character at stone lanterns
+   (0.55 m) and candle cairns (0.4 m); only the tiny tea-light groups are stepped over on purpose.
 4. Camera can't be turned by hand; a sky lantern first appears huge right in front of the camera.
 5. Lake surface shows stripe-like bands; lilac/sky lanterns read pale; back grass looks smeared.
 6. Not tested on a real phone.
