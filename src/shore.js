@@ -29,6 +29,7 @@ function bumps(x, z) {
   return 0.18 * Math.sin(x * 0.21 + z * 0.13) * Math.sin(z * 0.17 - x * 0.07) + 0.08 * Math.sin(x * 0.53 + 1.7) * Math.cos(z * 0.47);
 }
 export function groundY(x, z) {
+  if (onPier(x, z, 0.15)) return PIER.deck + 0.04;       // standing on the planks
   const d = waterDist(x, z);
   if (d < 0) return Math.max(-2.5, d * 0.12) - 0.05;
   const beach = 0.9 * (1 - Math.exp(-d / 7));            // gentle sand slope out of the water
@@ -37,7 +38,7 @@ export function groundY(x, z) {
   return beach + rise + bumps(x, z) * fade;
 }
 // the little wooden pier just right of the start: it runs from the sand (d = PIER.d0) straight out
-// toward the lake centre into the shallows (d = PIER.d1). Scenery: the character walks around it.
+// toward the lake centre into the shallows (d = PIER.d1). The character can walk out along its deck.
 const PIER = { a: Math.PI / 2 - 0.19, d0: 3.2, d1: -10.5, half: 1.0, deck: 0.52 };   // root at x≈15: clear of the start and the lanterns posed off it
 
 // solid things standing on (or at the edge of) the walkable sand: the character walks around them
@@ -78,11 +79,23 @@ function onPier(x, z, m = 0) {
 }
 // the near shore: the arc of beach facing the viewer, roomy enough to wander
 export function walkable(x, z) {
+  if (onPier(x, z, 0.15)) return true;                    // out along the pier deck, over the shallows
   const d = waterDist(x, z);
   if (d < 0.5 || d > 30) return false;
-  if (onPier(x, z, 0.25) || blocked(x, z)) return false;
+  if (blocked(x, z)) return false;                        // stone lanterns and cairns
   return z > -40;
 }
+// standing on the pier: where a lantern set on the water from it should go (just past the pier's end);
+// otherwise null
+export function pierLaunchPoint(x, z) {
+  if (!onPier(x, z, 0.05)) return null;
+  const ca = Math.cos(PIER.a), sa = Math.sin(PIER.a), r0 = shoreRadius(PIER.a);
+  const p = pierLocal(x, z);
+  const d = Math.min(p.d - 1.6, PIER.d1 - 0.9);
+  // the pier runs toward the lake centre, i.e. along -(ca, sa) as d decreases
+  return { x: LAKE.cx + ca * (r0 + d) - sa * p.s, z: LAKE.cz + sa * (r0 + d) + ca * p.s };
+}
+export const PIER_DECK = PIER.deck;
 export function nearestShore(x, z, d = 0.8) {
   const dx = x - LAKE.cx, dz = z - LAKE.cz;
   const a = Math.atan2(dz, dx);

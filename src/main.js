@@ -661,7 +661,8 @@ function sendLantern() {
   const water = composeMode === 'water';
   // set it down from where the character stands: on the water at its feet, or up from its hands
   const dir = walker.lakeDir();
-  const at = water ? shore.nearestShore(walker.pos.x, walker.pos.z, -1.4) : { x: walker.pos.x + dir.x * 0.7, z: walker.pos.z + dir.z * 0.7 };
+  const fromPier = water && shore.pierLaunchPoint(walker.pos.x, walker.pos.z);
+  const at = fromPier || (water ? shore.nearestShore(walker.pos.x, walker.pos.z, -1.4) : { x: walker.pos.x + dir.x * 0.7, z: walker.pos.z + dir.z * 0.7 });
   const L = makeLantern({
     id, mine: true, text, color: composeColor, mode: composeMode,
     x: at.x, y: water ? 0 : walker.pos.y + 1.3, z: at.z,
@@ -767,12 +768,16 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 const raycaster = new THREE.Raycaster();
 const waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const deckPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -shore.PIER_DECK);
 function walkToScreenPoint(cx, cy) {
   const ndc = new THREE.Vector2((cx / window.innerWidth) * 2 - 1, -(cy / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
   const hit = beach && raycaster.intersectObject(beach.mesh, false)[0];
+  const deck = new THREE.Vector3();
   let x, z;
-  if (hit && hit.point.y > -0.02) { x = hit.point.x; z = hit.point.z; }
+  if (raycaster.ray.intersectPlane(deckPlane, deck) && shore.pierLaunchPoint(deck.x, deck.z) && shore.walkable(deck.x, deck.z)
+      && (!hit || hit.distance > deck.distanceTo(raycaster.ray.origin))) { x = deck.x; z = deck.z; }  // tapped the pier deck
+  else if (hit && hit.point.y > -0.02) { x = hit.point.x; z = hit.point.z; }
   else { // tapped the water: walk to the water's edge in that direction
     const p = new THREE.Vector3();
     if (!raycaster.ray.intersectPlane(waterPlane, p)) return;
