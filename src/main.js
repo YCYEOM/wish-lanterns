@@ -297,9 +297,12 @@ applyAtmos(true);
 fetchSeoulWeather(4000).then((w) => {
   seoul.tried = true;
   if (w) { seoul.weather = w.kind; seoul.temp = w.temp; }
-  applyAtmos(screen === 'title');      // still on the title: just be it; already walking: drift into it
-  if (screen !== 'title') noticeWeather();
+  // on the title the lake keeps a clear night of the season; the real weather rolls in once you are on the beach
+  if (screen !== 'title') { applyAtmos(false); noticeWeather(); }
 });
+const ATMOS_VIEW = { pos: [-6, 3.2, 24], target: [2, 3.5, -40] };
+function forceAtmos(w, s) { forcedWeather = w; forcedSeason = s; applyAtmos(true); }
+function realAtmos() { if (forcedWeather || forcedSeason) forceAtmos(null, null); }
 function weatherLine() {
   const S = SEASONS[seoul.season];
   if (!seoul.weather) return `${S.emoji} ${S.name}밤의 호수예요`;
@@ -310,6 +313,7 @@ function weatherLine() {
 function noticeWeather() {
   if (weatherNoticed || !seoul.tried) return;
   weatherNoticed = true;
+  applyAtmos(false);                   // rain rings spread, clouds gather, snow starts to fall, over a few seconds
   setTimeout(() => toast(weatherLine(), 5200), invitedLake() ? 5200 : 1600);
 }
 
@@ -841,6 +845,7 @@ document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => closePa
 
 function openCompose() {
   closeCard();
+  $('toast').classList.add('hidden');   // the weather / arrival line never sits over the panel
   $('compose').classList.remove('hidden');
   $('launchBtn').classList.add('hidden'); $('tip').classList.add('hidden');
   screen = 'compose';
@@ -1140,9 +1145,18 @@ installStudio({
   probes: ext.probes,
   demos,
   cameras: {
-    lake() { setCam({ pos: [0, 16, 42], target: [0, 0, -60] }); }, // a high view over the beach and the whole lake
-    low() { setCam({ pos: [0, 2.3, 23], target: [0, 5.8, -60] }); },
-    sky() { setCam({ pos: [0, 1.5, 22], target: [0, 30, -60] }); },
+    lake() { realAtmos(); setCam({ pos: [0, 16, 42], target: [0, 0, -60] }); }, // a high view over the beach and the whole lake
+    low() { realAtmos(); setCam({ pos: [0, 2.3, 23], target: [0, 5.8, -60] }); },
+    sky() { realAtmos(); setCam({ pos: [0, 1.5, 22], target: [0, 30, -60] }); },
+    // every weather and season, forced, from a view that shows sky, lake and beach together
+    'wx-cloudy'() { forceAtmos('cloudy', null); setCam(ATMOS_VIEW); },
+    'wx-rain'() { forceAtmos('rain', null); setCam(ATMOS_VIEW); },
+    'wx-snow'() { forceAtmos('snow', 'winter'); setCam(ATMOS_VIEW); },
+    'wx-fog'() { forceAtmos('fog', null); setCam(ATMOS_VIEW); },
+    'season-spring'() { forceAtmos('clear', 'spring'); setCam(ATMOS_VIEW); },
+    'season-summer'() { forceAtmos('clear', 'summer'); setCam(ATMOS_VIEW); },
+    'season-autumn'() { forceAtmos('clear', 'autumn'); setCam(ATMOS_VIEW); },
+    'season-winter'() { forceAtmos('clear', 'winter'); setCam(ATMOS_VIEW); },
   },
   flow: () => (screen === 'title' ? 'menu' : 'playing'),
   begin() { startGame(); $('title').classList.add('hidden'); }, // the studio's clock may be frozen: skip the fade

@@ -135,7 +135,10 @@ const LIGHT_GLSL = /* glsl */`
   // a frosted winter grey-green. tree = 1 for tree crowns (blossom and autumn colour go there first)
   vec3 seasonLeaf(vec3 col, vec3 W, float tree){
     float lum = dot(col, vec3(0.3, 0.55, 0.15));
-    float v = sHash(floor(W * vec3(0.35, 0.5, 0.35)) + 3.0);
+    // a soft, large-scale variation (cells read as a checkerboard on the open bank)
+    vec3 q = W * vec3(0.16, 0.22, 0.16) + 3.0; vec3 qi = floor(q), qf = fract(q); qf = qf * qf * (3.0 - 2.0 * qf);
+    float v = mix(mix(mix(sHash(qi), sHash(qi + vec3(1,0,0)), qf.x), mix(sHash(qi + vec3(0,1,0)), sHash(qi + vec3(1,1,0)), qf.x), qf.y),
+                  mix(mix(sHash(qi + vec3(0,0,1)), sHash(qi + vec3(1,0,1)), qf.x), mix(sHash(qi + vec3(0,1,1)), sHash(qi + vec3(1,1,1)), qf.x), qf.y), qf.z);
     vec3 sum = col * vec3(0.85, 1.15, 0.8);
     vec3 aut = lum * mix(mix(vec3(3.4, 0.7, 0.25), vec3(3.1, 1.5, 0.3), smoothstep(0.25, 0.6, v)), vec3(2.4, 2.0, 0.45), smoothstep(0.7, 0.95, v));
     aut = mix(col * vec3(1.2, 0.95, 0.5), aut, 0.55 + 0.45 * tree);
