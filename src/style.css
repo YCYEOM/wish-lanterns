@@ -87,7 +87,7 @@ body.hud-off #hud, body.hud-off #toast { display: none !important; }
 body.hud-off #netline { display: none; }
 
 .icon-btn.invite { right: 60px; }
-#toast { max-width: calc(100vw - 32px); white-space: normal; text-align: center; word-break: break-all; }
+#toast { max-width: calc(100vw - 32px); white-space: normal; text-align: center; word-break: keep-all; overflow-wrap: anywhere; }
 
 /* ---- phones: keep everything on screen, one-line button, scrollable panels on short screens ---- */
 .panel { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }

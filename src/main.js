@@ -6,6 +6,8 @@ import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
 import * as shore from './shore.js';
 import { createWalker } from './walker.js';
+import { createAtmosphere, fetchSeoulWeather, WEATHER, WEATHER_KINDS } from './weather.js';
+import { seoulSeason, SEASONS, SEASON_NAMES } from './season.js';
 
 // ---------------------------------------------------------------- rng
 let rngState = 1;
@@ -38,6 +40,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x15122c, 0.0042);
+const FOG_NIGHT = new THREE.Color(0x15122c), FOG_MIST = new THREE.Color(0x2c2a44);   // mist rolls in lighter than the night
 const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 1200);
 const CAM_BASE = new THREE.Vector3(0, 3.4, 25);
 const CAM_TARGET = new THREE.Vector3(0, 5.5, -60);
@@ -48,10 +51,14 @@ const LAKE = { cx: shore.LAKE.cx, cz: shore.LAKE.cz, rx: shore.LAKE.r, rz: shore
 const lakeE = shore.lakeE;
 
 // nightK: 0 = early evening (warm dusk glow on the horizon) .. 1 = deep night (dark horizon, brighter stars and Milky Way)
-const uniforms = { time: { value: 0 }, camPos: { value: new THREE.Vector3() }, nightK: { value: 0 } };
+// weather and season (src/weather.js, src/season.js) drive the rest: cloudK hides the stars, rainK darkens the sky
+// and rings the lake with raindrops, fogK pulls mist over the far shore; snowCover/leaf* tint the beach (shore.js)
+const uniforms = { time: { value: 0 }, camPos: { value: new THREE.Vector3() }, nightK: { value: 0 },
+  cloudK: { value: 0 }, rainK: { value: 0 }, fogK: { value: 0 }, ffAmt: { value: 0.45 },
+  snowCover: { value: 0 }, season: { value: new THREE.Vector4(0, 0, 1, 0) } };   // season: spring, summer, autumn, winter weights
 
 const GLSL_COMMON = /* glsl */`
-uniform float nightK;
+uniform float nightK; uniform float cloudK; uniform float rainK; uniform float fogK;
 float hash13(vec3 p){ p = fract(p*0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
 float noise3(vec3 p){
   vec3 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
@@ -78,6 +85,15 @@ vec3 skyColor(vec3 dir, float t, float starAmt){
   col += vec3(0.15, 0.13, 0.26) * band * smoothstep(0.30, 0.85, n) * (1.3 + 0.6 * nightK);
   col += vec3(0.20, 0.12, 0.10) * band * smoothstep(0.60, 0.95, n) * 0.6;
   col *= 1.0 - 0.45 * band * smoothstep(0.52, 0.72, n2);
+  // clouds: soft banks drifting slowly, thicker toward the horizon; they hide the stars and the Milky Way
+  float cl = 0.0;
+  if (cloudK > 0.001) {
+    vec3 cd = vec3(dir.x, dir.y * 2.6, dir.z) * 2.2 + vec3(t * 0.006, 0.0, t * 0.003);
+    float cn = fbm(cd) * 0.75 + fbm(cd * 2.7 + 5.0) * 0.25;
+    cl = smoothstep(0.62 - 0.44 * cloudK, 0.86 - 0.26 * cloudK, cn) * smoothstep(-0.02, 0.06, h);
+    cl = min(1.0, cl * (0.45 + 0.75 * cloudK) + cloudK * 0.22 * (1.0 - smoothstep(0.0, 0.4, h)));
+    col *= 1.0 - 0.6 * cl * band;
+  }
   vec3 p = dir * 230.0;
   vec3 c = floor(p);
   float hs = hash13(c);
@@ -87,8 +103,16 @@ vec3 skyColor(vec3 dir, float t, float starAmt){
     float d = length(p - sp);
     float s = (hs - thr) / (1.0 - thr);
     float tw = 0.65 + 0.35 * sin(t * (1.0 + s * 3.0) + hs * 50.0);
-    col += vec3(1.0, 0.94, 0.84) * smoothstep(0.42, 0.0, d) * tw * (0.35 + s * 2.2) * (1.0 + 0.5 * nightK) * starAmt * smoothstep(0.0, 0.08, h);
+    col += vec3(1.0, 0.94, 0.84) * smoothstep(0.42, 0.0, d) * tw * (0.35 + s * 2.2) * (1.0 + 0.5 * nightK) * (1.0 - cl) * (1.0 - 0.6 * rainK) * starAmt * smoothstep(0.0, 0.08, h);
   }
+  // cloud undersides catch a little of the dusk glow and the lantern-lit lake below
+  // moonlit tops lighter than the sky behind, edges catching more than the dense middles
+  vec3 cloudCol = mix(vec3(0.085, 0.080, 0.135), vec3(0.15, 0.10, 0.13), (1.0 - nightK) * (1.0 - smoothstep(0.0, 0.35, h)));
+  cloudCol *= 0.8 + 0.45 * (1.0 - cl);
+  col = mix(col, cloudCol * (1.0 - 0.35 * rainK), cl * 0.92);
+  col *= 1.0 - 0.3 * rainK;
+  // mist: the horizon washes into a soft grey-violet haze
+  col = mix(col, vec3(0.13, 0.12, 0.20), fogK * (1.0 - smoothstep(0.0, 0.32, h)) * 0.95);
   return max(col, 0.0);
 }`;
 
@@ -125,12 +149,26 @@ const water = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400, 1, 1), new THRE
       g += d3 * cos(dot(p, d3) * 1.11 + t * 0.95) * 0.014 * k * kf;
       g += (vec2(noise3(vec3(p*0.6, t*0.3)), noise3(vec3(p*0.6 + 9.0, t*0.3))) - 0.5) * 0.07 * k;
       g += (vec2(noise3(vec3(p*1.7, t*0.5)), noise3(vec3(p*1.7 + 4.0, t*0.5))) - 0.5) * 0.035 * k * kf;
+      // raindrops: rings opening on a jittered grid, only near enough to read
+      if (rainK > 0.001 && dist < 45.0) {
+        for (int j = 0; j < 2; j++) {
+          vec2 q = p * (j == 0 ? 0.9 : 1.37) + float(j) * 7.3;
+          vec2 ci = floor(q), cf = fract(q) - 0.5;
+          float ph = hash13(vec3(ci, float(j)));
+          vec2 o = (vec2(hash13(vec3(ci, 3.1)), hash13(vec3(ci, 5.7))) - 0.5) * 0.5;
+          float lt = fract(t * (0.55 + ph * 0.5) + ph * 7.0);
+          float rr = length(cf - o);
+          float ring = exp(-pow((rr - lt * 0.45) / 0.035, 2.0)) * (1.0 - lt) * step(ph, 0.35 + 0.6 * rainK);
+          g += (cf - o) / max(rr, 1e-3) * ring * 0.9 * rainK * (1.0 - dist / 45.0);
+        }
+      }
       vec3 n = normalize(vec3(g.x, 1.0, g.y));
       vec3 r = reflect(-v, n); r.y = abs(r.y);
       vec3 refl = skyColor(normalize(r), t, 0.8);
       float fres = 0.05 + 0.95 * pow(1.0 - max(dot(v, n), 0.0), 5.0);
       vec3 deep = vec3(0.004, 0.009, 0.026);
       vec3 col = mix(deep, refl * 0.8, clamp(fres * 0.85 + 0.1, 0.0, 1.0));
+      col = mix(col, vec3(0.13, 0.12, 0.20), fogK * (1.0 - exp(-pow(dist * 0.011, 2.0))) * 0.92);
       gl_FragColor = vec4(col, 1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -216,7 +254,7 @@ function buildWorld() {
   scene.add(reeds);
 
   // fireflies
-  const FF = 110;
+  const FF = 260;   // shown by season: uniforms.ffAmt is the share lit (summer all, winter none)
   const fpos = new Float32Array(FF * 3), fseed = new Float32Array(FF * 4);
   for (let i = 0; i < FF; i++) {
     const a = rr(Math.PI * 0.05, Math.PI * 0.95), k = rr(0.85, 1.25);
@@ -230,13 +268,13 @@ function buildWorld() {
   fg.setAttribute('aSeed', new THREE.BufferAttribute(fseed, 4));
   const ff = new THREE.Points(fg, new THREE.ShaderMaterial({
     uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: `uniform float time; attribute vec4 aSeed; varying float vB;
+    vertexShader: `uniform float time; uniform float ffAmt; attribute vec4 aSeed; varying float vB;
       void main(){
         vec3 p = position;
         p += vec3(sin(time*0.3*(0.5+aSeed.x) + aSeed.y*6.28)*1.8, sin(time*0.5*(0.5+aSeed.z) + aSeed.w*6.28)*0.6, cos(time*0.27*(0.5+aSeed.y) + aSeed.x*6.28)*1.8);
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         vB = pow(0.5 + 0.5*sin(time*(0.8 + aSeed.z*1.5) + aSeed.x*40.0), 3.0);
-        gl_PointSize = (70.0 / -mv.z) * (0.4 + vB) * ${renderer.getPixelRatio().toFixed(1)};
+        gl_PointSize = step(aSeed.w, ffAmt) * (70.0 / -mv.z) * (0.4 + vB) * ${renderer.getPixelRatio().toFixed(1)};
         gl_Position = projectionMatrix * mv; }`,
     fragmentShader: `varying float vB; void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, d); a = a*a;
       gl_FragColor = vec4(vec3(1.0, 0.92, 0.45) * a * (0.25 + vB*1.2), 1.0); }`,
@@ -244,6 +282,36 @@ function buildWorld() {
   scene.add(ff);
 }
 buildWorld();
+
+// ---------------------------------------------------------------- Seoul weather + season
+// the season comes from today's date in Seoul; the weather is fetched once per visit (clear night of the
+// season if the weather service does not answer within a few seconds)
+const atmos = createAtmosphere(scene, uniforms, { pixelRatio: renderer.getPixelRatio(),
+  coarse: !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches) });
+const seoul = { season: seoulSeason(), weather: null, temp: null, tried: false };
+let forcedWeather = null, forcedSeason = null, weatherNoticed = false;
+function applyAtmos(instant) {
+  atmos.set({ season: forcedSeason || seoul.season, weather: forcedWeather || seoul.weather || 'clear', instant });
+}
+applyAtmos(true);
+fetchSeoulWeather(4000).then((w) => {
+  seoul.tried = true;
+  if (w) { seoul.weather = w.kind; seoul.temp = w.temp; }
+  applyAtmos(screen === 'title');      // still on the title: just be it; already walking: drift into it
+  if (screen !== 'title') noticeWeather();
+});
+function weatherLine() {
+  const S = SEASONS[seoul.season];
+  if (!seoul.weather) return `${S.emoji} ${S.name}밤의 호수예요`;
+  const W = WEATHER[seoul.weather];
+  const t = typeof seoul.temp === 'number' ? ` · ${Math.round(seoul.temp)}°` : '';
+  return `${W.emoji} ${S.name}밤, ${W.line}${t}`;
+}
+function noticeWeather() {
+  if (weatherNoticed || !seoul.tried) return;
+  weatherNoticed = true;
+  setTimeout(() => toast(weatherLine(), 5200), invitedLake() ? 5200 : 1600);
+}
 
 // ---------------------------------------------------------------- lanterns
 function glowTexture() {
@@ -630,6 +698,9 @@ function update(dt) {
   updateLanterns(dt);
   updateSparks(dt);
   updateStar(dt);
+  atmos.update(dt);
+  scene.fog.density = 0.0042 + uniforms.fogK.value * 0.0095;
+  scene.fog.color.copy(FOG_NIGHT).lerp(FOG_MIST, uniforms.fogK.value);
 }
 
 function render(dt = 0) {
@@ -744,6 +815,7 @@ function startGame() {
   net.start();
   const inv = invitedLake();
   if (inv) setTimeout(() => toast(`초대받은 호수 ${inv}에 들어왔어요`, 3500), 1400);
+  noticeWeather();
 }
 $('title').addEventListener('pointerdown', startGame);
 
@@ -1016,7 +1088,7 @@ function hudShow(show) { document.body.classList.toggle('hud-off', !show); }
 const ext = {
   probes() {
     return {
-      screen, time: +T.toFixed(3), lanterns: lanterns.length, walker: walker.state(),
+      screen, time: +T.toFixed(3), lanterns: lanterns.length, walker: walker.state(), atmos: { ...atmos.state(), seoulWeather: seoul.weather, seoulSeason: seoul.season, line: seoul.tried ? weatherLine() : null },
       water: lanterns.filter(l => l.mode === 'water').length, sky: lanterns.filter(l => l.mode === 'sky').length,
       launched: save.launched, heartsSent: save.hearts, mine: lanterns.filter(l => l.mine).length,
       selected: selected ? { id: selected.id, text: selected.text } : null,
@@ -1077,6 +1149,10 @@ installStudio({
 });
 // keep our extra helpers next to the contract's own verbs
 window.__studio.screenOf = (id) => { const L = lanterns.find(l => l.id === id); if (!L) return null; const v = new THREE.Vector3(L.x, L.y + (L.mode === 'water' ? 0.63 : 0.85), L.z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight, dist: +camera.position.distanceTo(new THREE.Vector3(L.x, L.y, L.z)).toFixed(1) }; };
+// force a weather / season for looking at it (null: back to today's Seoul); instant=true skips the easing
+window.__studio.weather = (kind, instant) => { forcedWeather = WEATHER_KINDS.includes(kind) ? kind : null; applyAtmos(!!instant); return atmos.state(); };
+window.__studio.season = (name, instant) => { forcedSeason = SEASON_NAMES.includes(name) ? name : null; applyAtmos(!!instant); return atmos.state(); };
+window.__studio.atmos = () => ({ ...atmos.state(), seoul: { ...seoul }, line: weatherLine() });
 window.__studio.view = () => ({ ...walker.view, dir: walker.viewDir(), st: walker.state() });
 window.__studio.swatch = () => { COLORS.forEach((c, i) => { makeLantern({ id: 'sw' + i, color: c.id, mode: 'water', x: (i - 2) * 2.2, y: 0, z: 4 }); makeLantern({ id: 'sv' + i, color: c.id, mode: 'sky', x: (i - 2) * 2.2, y: 4.5, z: 2 }); });
   lanterns.filter(l => /^s[wv]/.test(l.id)).forEach(l => { l.vx = l.vz = l.vy = 0; l.speed = 0; }); return true; };

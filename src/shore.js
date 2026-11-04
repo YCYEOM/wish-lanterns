@@ -129,6 +129,20 @@ function hash2(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; r
 // fill, the character's warm lantern pooling on whatever is near it, fog toward the horizon
 const LIGHT_GLSL = /* glsl */`
   uniform vec3 camPos; uniform vec3 playerPos; uniform float time; uniform vec3 pierLamp; uniform vec4 lamps[20];
+  uniform float snowCover; uniform vec4 season; uniform float fogK;
+  float sHash(vec3 p){ p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+  // leaves and grass take the season: spring blossom on the crowns, lush summer green, autumn reds and golds,
+  // a frosted winter grey-green. tree = 1 for tree crowns (blossom and autumn colour go there first)
+  vec3 seasonLeaf(vec3 col, vec3 W, float tree){
+    float lum = dot(col, vec3(0.3, 0.55, 0.15));
+    float v = sHash(floor(W * vec3(0.35, 0.5, 0.35)) + 3.0);
+    vec3 sum = col * vec3(0.85, 1.15, 0.8);
+    vec3 aut = lum * mix(mix(vec3(3.4, 0.7, 0.25), vec3(3.1, 1.5, 0.3), smoothstep(0.25, 0.6, v)), vec3(2.4, 2.0, 0.45), smoothstep(0.7, 0.95, v));
+    aut = mix(col * vec3(1.2, 0.95, 0.5), aut, 0.55 + 0.45 * tree);
+    vec3 spr = mix(col * vec3(1.0, 1.1, 0.9), mix(vec3(1.0, 0.36, 0.62), vec3(1.0, 0.58, 0.74), v), tree * (0.6 + 0.35 * v));
+    vec3 win = mix(vec3(lum * 1.1), col, 0.35) * vec3(0.95, 1.0, 1.08);
+    return spr * season.x + sum * season.y + aut * season.z + win * season.w;
+  }
   vec3 shoreLight(vec3 col, vec3 N, vec3 W, float ao){
     vec3 L = normalize(vec3(-0.4, 0.8, -0.45));
     float diff = max(dot(N, L), 0.0);
@@ -153,8 +167,8 @@ const LIGHT_GLSL = /* glsl */`
   }
   vec3 shoreFog(vec3 lit, vec3 W){
     float dist = length(W - camPos);
-    float fog = 1.0 - exp(-pow(dist * 0.0042, 2.0));
-    return mix(lit, vec3(0.082, 0.071, 0.172), fog);
+    float fog = 1.0 - exp(-pow(dist * mix(0.0042, 0.012, fogK), 2.0));
+    return mix(lit, mix(vec3(0.082, 0.071, 0.172), vec3(0.13, 0.12, 0.20), fogK), fog);
   }`;
 
 // one lit material for the instanced dressing: per-instance tint (aCol), optional wind sway on height
@@ -180,6 +194,12 @@ function dressingMaterial(u, sway, doubleSide, grain = false) {
         ${doubleSide ? 'N = normalize(N + vec3(0.0, 0.8, 0.0));' : ''}
         float ao = clamp(0.45 + vH * 0.6, 0.45, 1.0);
         vec3 col = vC * (0.75 + 0.35 * clamp(vH, 0.0, 1.5));
+        // greenery (grass, reeds, bushes, crowns) follows the season; wood, stone and candles keep their colour
+        float green = clamp((vC.g - max(vC.r, vC.b)) * 14.0, 0.0, 1.0);
+        col = mix(col, seasonLeaf(col, vW, smoothstep(1.0, 1.6, vH)), green);
+        // snow settles on what faces up
+        float sn = snowCover * smoothstep(0.25, 0.75, N.y) * (0.75 + 0.25 * sHash(floor(vW * 6.0)));
+        col = mix(col, vec3(0.62, 0.66, 0.78), sn * 0.85);
         ${grain ? `{ vec2 g = vW.xz * vec2(1.0, 1.0); float k = sin(dot(vW.xz, vec2(0.8, 23.0)) + sin(vW.x * 3.1 + vW.z * 1.7) * 2.0);
           col *= 0.86 + 0.14 * k + 0.08 * sin(vW.y * 41.0 + vW.x * 13.0); }` : ''}
         gl_FragColor = vec4(shoreFog(shoreLight(col, N, vW, ao), vW), 1.0);
@@ -325,6 +345,7 @@ export function buildShore(scene, uniforms) {
     lamps: { value: Array.from({ length: 20 }, () => new THREE.Vector4(0, -50, 0, 0)) },
     lakeC: { value: new THREE.Vector3(LAKE.cx, 0, LAKE.cz) },
     lakeR: { value: LAKE.r },
+    snowCover: uniforms.snowCover, season: uniforms.season, fogK: uniforms.fogK,
   };
   const mat = new THREE.ShaderMaterial({
     uniforms: shoreUniforms, fog: false,
@@ -398,7 +419,7 @@ export function buildShore(scene, uniforms) {
         gK = max(gK, tuftK * 0.55 * (0.4 + 0.6 * streak));
         vec3 grass = mix(grassA, grassB, mid) * (0.6 + 0.7 * streak);
         grass = mix(grass, soil, smoothstep(0.55, 0.75, fbm(p * 0.35 + 9.0)) * 0.6);
-        col = mix(col, grass, gK);
+        col = mix(col, seasonLeaf(grass, vW, 0.0), gK);
         // a darker damp-soil seam where grass meets sand
         col *= 1.0 - 0.25 * (smoothstep(gEdge - 1.5, gEdge, d) - smoothstep(gEdge + 0.5, gEdge + 2.5, d));
 
@@ -410,6 +431,9 @@ export function buildShore(scene, uniforms) {
         vec3 N = normalize(normalize(vN) + vec3(-(hx - hS) / e, 0.0, -(hz - hS) / e) * 0.06);
         float cav = 0.85 + 0.3 * hS;                      // ripple troughs sit a little darker
         col *= cav;
+        // a blanket of snow over the beach and the bank, thinning to bare wet sand at the water
+        float snowK = snowCover * smoothstep(0.6, 2.4, d - reach) * (0.82 + 0.18 * fbm(p * 0.8 + 21.0));
+        col = mix(col, vec3(0.50, 0.54, 0.66) * (0.92 + 0.12 * fine), snowK);
         vec3 lit = shoreLight(col, N, vW, 1.0);
 
         // --- wet sand mirrors the sky: a cool sheen, brightest at grazing angles, with the moon glint

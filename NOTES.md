@@ -84,3 +84,20 @@ https://ycyeom.github.io/wish-lanterns/
      with a glowing head; more often deeper in the night. For 5 s a `#wishBtn` pill offers "별똥별에 소원 빌기";
      tapping it chimes, drops gold sparks from where the star went out, toasts, and counts `save.wishes`
      (shown in the stats pill). Local only (not networked). Test: `.studio/night.mjs` (`__studio.star()`, `wish()`).
+
+## Seoul weather + season (atmosphere)
+- `src/season.js`: `seoulSeason()` from the KST month (3-5 spring, 6-8 summer, 9-11 autumn, 12-2 winter); `SEASONS`
+  gives shader weights, firefly share, ground snow and what drifts (petals / leaves).
+- `src/weather.js`: `fetchSeoulWeather()` reads Open-Meteo (keyless, CORS) once per visit with a 4 s timeout;
+  WMO code -> clear / cloudy / rain / snow / fog. `createAtmosphere()` eases shared uniforms (`cloudK`, `rainK`,
+  `fogK`, `snowCover`, `season` vec4, `ffAmt`) and four camera-wrapped Points clouds (rain streaks, snowflakes,
+  cherry petals, autumn leaves; ~45% fewer on touch devices, point size clamped so nothing fills the lens).
+- Shaders: skyColor (main.js) draws cloud banks that hide stars (also in the water reflection), darkens for rain,
+  hazes the horizon for fog; the water gets raindrop rings; shore.js `seasonLeaf()` tints greenery (pink blossom
+  crowns, lush summer, red/orange/gold autumn, frosted winter) and `snowCover` blankets beach, bank and up-facing
+  dressing. Scene fog thickens and lightens with `fogK`.
+- On entering, one toast says e.g. "✨ 가을밤, 오늘 서울은 맑아요 · 13°"; if the service fails: "🍂 가을밤의 호수예요"
+  (clear night of the season). Weather arriving after you entered drifts in over a few seconds.
+- Hooks: `__studio.weather(kind|null, instant)`, `__studio.season(name|null, instant)`, `__studio.atmos()`;
+  `state().atmos`. Tests: `.studio/wx.mjs`, `wxsky.mjs`, `wxfail.mjs` (blocked API + fps), `wxphone.mjs`,
+  `pick-wx.mjs` (taps 28/28 in rain and snow).
