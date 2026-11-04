@@ -187,6 +187,11 @@ export function createWalker(scene, shore, glowTex) {
   let lastVx = 0, lastVz = 0, idleT = 0, flareS = 0, raise = 0;
   const tailLag = [0, 0];
   const cam = { pos: new THREE.Vector3(), look: new THREE.Vector3(), init: false };
+  // launch ceremony: kneel to set a lantern on the water, or lift it overhead for the sky
+  // { mode, t, dur } while running; poses come from the two eased amounts below
+  let cer = null, kneel = 0, lift = 0;
+  const CER = { water: { dur: 3.6, release: 1.7 }, sky: { dur: 3.0, release: 1.35 } };
+  const smooth = (a, b, t) => { const x = Math.max(0, Math.min(1, (t - a) / (b - a))); return x * x * (3 - 2 * x); };
 
   function lakeDir() {
     const dx = LAKE.cx - pos.x, dz = LAKE.cz - pos.z, l = Math.hypot(dx, dz) || 1;
@@ -225,10 +230,28 @@ export function createWalker(scene, shore, glowTex) {
     raise += ((near && w < 0.1 && idleT > 0.6 ? 1 : 0) - raise) * Math.min(1, dt * 2.5);
     armR.rotation.x = 0.35 + s * 0.22 * w + raise * 0.8;
     armR.rotation.z = 0.42 + raise * 0.05;
+    // ceremony poses on top: kneel (both hands reach down and forward) or lift (both hands overhead)
+    if (cer) {
+      cer.t += dt;
+      const c = CER[cer.mode], t = cer.t;
+      if (cer.mode === 'water') { kneel = smooth(0, 0.8, t) * (1 - smooth(c.dur - 0.9, c.dur, t)); lift = 0; }
+      else { lift = smooth(0, 0.85, t) * (1 - smooth(c.release + 0.7, c.dur, t)); kneel = 0; }
+      if (t >= c.dur) { cer = null; kneel = lift = 0; }
+    }
+    if (kneel > 0 || lift > 0) {
+      raise *= 1 - Math.min(1, dt * 6);
+      const reach = cer && cer.mode === 'water' ? smooth(0.7, 1.6, cer.t) : 0;   // hands go down to the water
+      armL.rotation.x = armL.rotation.x * (1 - kneel - lift) + kneel * (0.45 + reach * 0.3) + lift * 2.95;
+      armL.rotation.z = armL.rotation.z * (1 - kneel - lift) + (kneel * 0.32 - lift * 0.4);
+      armR.rotation.x = armR.rotation.x * (1 - kneel - lift) + kneel * (0.45 + reach * 0.3) + lift * 2.95;
+      armR.rotation.z = armR.rotation.z * (1 - kneel - lift) + (kneel * -0.32 + lift * 0.4);
+      legL.rotation.x = 1.45 * kneel;          // front knee up
+      legR.rotation.x = -0.5 * kneel;         // back knee down
+    }
 
     // body: bob twice per stride, roll into turns, lean into speed, breathe when still
-    body.position.y = 0.5 + Math.abs(c) * 0.055 * w + breathe * 0.008;
-    body.rotation.x = -0.12 * w - Math.max(-0.1, Math.min(0.1, aFwd * 0.012));
+    body.position.y = 0.5 + Math.abs(c) * 0.055 * w + breathe * 0.008 - kneel * 0.27 + lift * 0.03;
+    body.rotation.x = -0.12 * w - Math.max(-0.1, Math.min(0.1, aFwd * 0.012)) - kneel * 0.55 + lift * 0.08;
     body.rotation.z = s * 0.04 * w - Math.max(-0.25, Math.min(0.25, turnRate * 0.05)) * w;
     body.rotation.y = s * 0.08 * w;
     mantle.scale.y = 0.55 + breathe * 0.02;
@@ -237,7 +260,8 @@ export function createWalker(scene, shore, glowTex) {
     const gl = Math.sin(T * 0.37) * 0.55 + Math.sin(T * 0.91 + 1.3) * 0.18;
     const up = Math.max(0, Math.sin(T * 0.23 + 0.6)) * 0.35;
     head.rotation.y = (gl * (1 - w) - body.rotation.y * 0.8);
-    head.rotation.x = (-up * (1 - w) + 0.06 * w) + breathe * 0.02;
+    head.rotation.x = ((-up * (1 - w) + 0.06 * w) + breathe * 0.02) * (1 - kneel - lift) + kneel * 0.15 - lift * 0.55;
+    head.rotation.y *= 1 - kneel - lift;
     head.rotation.z = -body.rotation.z * 0.6;
 
     // lantern pendulum: a damped spring the hand's motion and acceleration excite
@@ -276,8 +300,25 @@ export function createWalker(scene, shore, glowTex) {
     reset(x, z) {
       pos.set(x, groundY(x, z), z); yaw = Math.atan2(-lakeDir().x, -lakeDir().z);
       vel.x = vel.z = 0; lastVx = lastVz = 0; turnRate = 0; swing = swingV = 0; walkAmt = 0; flareS = 0; raise = 0; idleT = 0;
-      target = null; onArrive = null; cam.init = false; moving = false;
+      target = null; onArrive = null; cam.init = false; moving = false; cer = null; kneel = lift = 0;
     },
+    // start the launch pose; returns its timing { dur, release } (seconds)
+    ceremony(mode) {
+      target = null; onArrive = null; vel.x = vel.z = 0;
+      const d = lakeDir(); yaw = Math.atan2(-d.x, -d.z);
+      cer = { mode: mode === 'sky' ? 'sky' : 'water', t: 0 };
+      return CER[cer.mode];
+    },
+    busy() { return !!cer; },
+    // world point between the two hands (where a lantern being set down or lifted is held)
+    hands(out = new THREE.Vector3()) {
+      root.updateMatrixWorld(true);
+      const a = new THREE.Vector3(0, -0.36, 0).applyMatrix4(armL.matrixWorld);
+      const b = new THREE.Vector3(0, -0.36, 0).applyMatrix4(armR.matrixWorld);
+      return out.addVectors(a, b).multiplyScalar(0.5);
+    },
+    get camLook() { return cam.look; },
+    get timing() { return cer && { t: cer.t, ...CER[cer.mode] }; },
     walkTo(x, z, cb) {
       // clamp the goal onto the beach: step it back toward the character until it is walkable
       let gx = x, gz = z;
@@ -294,6 +335,7 @@ export function createWalker(scene, shore, glowTex) {
       if (keys.has('KeyS') || keys.has('ArrowDown')) { ix -= f.x; iz -= f.z; }
       if (keys.has('KeyD') || keys.has('ArrowRight')) { ix += rx; iz += rz; }
       if (keys.has('KeyA') || keys.has('ArrowLeft')) { ix -= rx; iz -= rz; }
+      if (cer) ix = iz = 0;
       if (ix || iz) { target = null; onArrive = null; }
       else if (target) {
         const dx = target.x - pos.x, dz = target.z - pos.z, l = Math.hypot(dx, dz);

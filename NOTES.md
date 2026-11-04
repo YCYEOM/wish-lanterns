@@ -38,12 +38,16 @@ https://ycyeom.github.io/wish-lanterns/
 
 ## Verified
 - Playtests (shore, walker) passed; launch, read card, ♡, hide exercised in play. Tap accuracy 28/28, empty taps 5/5.
-- Pier: walked to its end (10.7 m out) and launched from it.
+- Pier: walked to its end (stops ~1 m short of the end lamp, stays inside the posts) and launched from it.
 - Multiplayer: two local headless clients connected, lanterns + ♡ crossed; lake overflow + invite verified.
   Real cross-network play not tested by me.
 
 ## Known issues / next (priority order)
-1. Launch has no moment: no kneel/raise animation, no camera following your lantern as it leaves (top suggestion).
+1. ~~Launch moment~~ done: `walker.ceremony(mode)` kneels (water) or lifts overhead (sky); the lantern is held in
+   `walker.hands()` (small), lowered onto the water / let go at `release`, then grows to full size. `applyCine` in
+   main.js: close 3/4 shot from the left, then a follow shot after your lantern, ~7 s; movement input is blocked during
+   the pose, and moving afterwards cuts the shot short. Test hooks `__studio.freeze()/advance(ms)` step it frame-exactly
+   (`.studio/cer.mjs [pier]`).
 2. Sideways walking can stick at the water's edge or the back boundary (stepping back frees it).
 3. The character walks through stone lanterns.
 4. Camera can't be turned by hand; a sky lantern first appears huge right in front of the camera.

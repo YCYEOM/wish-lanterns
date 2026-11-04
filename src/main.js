@@ -291,7 +291,8 @@ function makeLantern(opts) {
   if (opts.mode === 'water') { g.add(new THREE.Mesh(GEO.base, darkMat)); g.add(new THREE.Mesh(GEO.frame, darkMat)); }
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.8 }));
   glow.scale.setScalar(4.2); glow.position.y = 0.45;
-  g.scale.setScalar(opts.mode === 'water' ? 1.5 : 1.7);
+  const baseScale = opts.mode === 'water' ? 1.5 : 1.7;
+  g.scale.setScalar(baseScale);
   g.add(glow);
   const refl = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.45 }));
   lanternGroup.add(g); lanternGroup.add(refl);
@@ -300,7 +301,7 @@ function makeLantern(opts) {
     hearts: opts.hearts | 0, group: g, mat, glow, refl,
     x: opts.x, y: opts.y, z: opts.z, vx: opts.vx || 0, vz: opts.vz || 0, vy: opts.vy || 0,
     ph: rng() * 100, ph2: rng() * 100, speed: rr(0.5, 1), alpha: opts.alpha ?? 1, fadeIn: opts.fadeIn || 0,
-    rot: rng() * Math.PI * 2, selected: 0, fresh: opts.fresh || 0,
+    rot: rng() * Math.PI * 2, selected: 0, fresh: opts.fresh || 0, baseScale,
   };
   g.rotation.y = L.rot;
   lanterns.push(L);
@@ -411,8 +412,37 @@ function updateStar(dt) {
 
 // ---------------------------------------------------------------- simulation
 let T = 0;
+// a lantern still in the character's hands during the launch pose
+const _hands = new THREE.Vector3();
+function holdLantern(L, dt) {
+  const H = L.held; H.t += dt;
+  if (L.fadeIn > 0) { L.alpha = Math.min(1, L.alpha + dt / L.fadeIn); if (L.alpha >= 1) L.fadeIn = 0; }
+  walker.hands(_hands);
+  const sc = L.mode === 'water' ? 0.45 : 0.24;
+  let x = _hands.x, y = _hands.y - 0.12, z = _hands.z;
+  if (L.mode === 'water') {           // after the kneel, it is lowered out onto the water
+    const k = Math.max(0, Math.min(1, (H.t - 0.85) / (H.release - 0.85))), e = k * k * (3 - 2 * k);
+    x += (H.to.x - x) * e; z += (H.to.z - z) * e; y += (0.03 - y) * e;
+  } else y += 0.3;
+  L.x = x; L.y = y; L.z = z;
+  L.group.position.set(x, y, z);
+  L.group.scale.setScalar(L.baseScale * sc);
+  L.group.rotation.set(0, L.rot, 0);
+  const flick = 0.88 + 0.08 * Math.sin(T * 7.3 + L.ph);
+  L.mat.opacity = 0.96 * L.alpha;
+  L.glow.material.opacity = 0.8 * flick * L.alpha;
+  L.glow.scale.setScalar(3.4 * (1 + L.fresh * 0.25));
+  L.refl.material.opacity = L.mode === 'water' ? 0.6 * flick * L.alpha * Math.max(0, 1 - (y - 0.03) * 3) : 0;
+  L.refl.position.set(x, -2.2, z);
+  if (H.t >= H.release) {             // let go
+    L.held = null; L.vx = H.v.x; L.vz = H.v.z; L.vy = H.v.y; L.grow = 0;
+  }
+}
+
 function updateLanterns(dt) {
   for (const L of lanterns) {
+    if (L.held) { holdLantern(L, dt); continue; }
+    if (L.grow !== undefined && L.grow < 1) { L.grow = Math.min(1, L.grow + dt / (L.mode === 'water' ? 1.6 : 9)); const g0 = L.mode === 'water' ? 0.45 : 0.24; L.group.scale.setScalar(L.baseScale * (g0 + (1 - g0) * L.grow)); if (L.grow >= 1) delete L.grow; }
     if (L.fadeIn > 0) { L.alpha = Math.min(1, L.alpha + dt / L.fadeIn); if (L.alpha >= 1) L.fadeIn = 0; }
     if (L.fresh > 0) L.fresh = Math.max(0, L.fresh - dt);
     if (L.mode === 'water') {
@@ -458,6 +488,44 @@ function updateLanterns(dt) {
   }
 }
 
+// launch cinematic: the camera eases back and follows your own lantern as it leaves, then hands control back
+let cine = null;
+const _cp = new THREE.Vector3(), _cl = new THREE.Vector3();
+function applyCine(dt) {
+  const C = cine; C.t += dt;
+  const L = C.L;
+  if (!lanterns.includes(L)) { cine = null; return; }
+  // moving again ends it early (a softer, quicker hand-back)
+  if (!walker.busy() && heldKeys().size && C.t < C.dur - 1.0) C.t = C.dur - 1.0;
+  const sm = (a, b, t) => { const x = Math.max(0, Math.min(1, (t - a) / (b - a))); return x * x * (3 - 2 * x); };
+  const b = sm(0, 1.4, C.t) * (1 - sm(C.dur - 1.6, C.dur, C.t));
+  const f = walker.lakeDir(), p = walker.pos, rx = -f.z, rz = f.x;
+  // first a close three-quarter view from the left (the kneel / the lift, the lantern in its hands),
+  // then, from the release, the follow shot after the lantern
+  const rel = C.mode === 'water' ? 1.7 : 1.35;
+  const q = sm(rel - 0.2, rel + 1.6, C.t);
+  const sx = p.x - rx * 3.0 - f.x * 2.6, sz = p.z - rz * 3.0 - f.z * 2.6;
+  const side = { x: sx, y: p.y + (C.mode === 'water' ? 1.5 : 1.2), z: sz };
+  const sideLook = { x: p.x + f.x * 0.9, y: p.y + (C.mode === 'water' ? 0.55 : 1.5), z: p.z + f.z * 0.9 };
+  if (C.mode === 'water') {           // back and up, looking out at the lantern on the water
+    const lx = L.x - p.x, lz = L.z - p.z, out = Math.min(14, Math.hypot(lx, lz));
+    _cp.set(p.x - f.x * (8 + out * 0.15), p.y + 4.6 + out * 0.12, p.z - f.z * (8 + out * 0.15));
+    _cl.set(p.x * 0.35 + L.x * 0.65, L.y + 0.2, p.z * 0.35 + L.z * 0.65);
+  } else {                            // low behind the character, tilting up after the rising lantern
+    _cp.set(p.x - f.x * 7.5, p.y + 1.7, p.z - f.z * 7.5);
+    _cl.set(p.x * 0.3 + L.x * 0.7, Math.min(L.y, p.y + 9) * 0.85 + p.y * 0.15, p.z * 0.3 + L.z * 0.7);
+  }
+  _cp.set(side.x + (_cp.x - side.x) * q, side.y + (_cp.y - side.y) * q, side.z + (_cp.z - side.z) * q);
+  _cl.set(sideLook.x + (_cl.x - sideLook.x) * q, sideLook.y + (_cl.y - sideLook.y) * q, sideLook.z + (_cl.z - sideLook.z) * q);
+  _cp.y = Math.max(_cp.y, shore.groundY(_cp.x, _cp.z) + 1.0);
+  const k = 1 - Math.exp(-dt * 2.5);
+  C.pos.lerp(_cp, k); C.look.lerp(_cl, 1 - Math.exp(-dt * 3));
+  camera.position.lerp(C.pos, b);
+  _cp.copy(walker.camLook).lerp(C.look, b);
+  camera.lookAt(_cp);
+  if (C.t >= C.dur) cine = null;
+}
+
 const pointer = { x: 0, y: 0, sx: 0, sy: 0 };
 let debugCam = null;
 function updateCamera(dt) {
@@ -469,6 +537,7 @@ function updateCamera(dt) {
     const dy = pointer.sy > 0 ? pointer.sy * 0.35 : pointer.sy; // looking down is gentler than looking up
     // no mouse parallax on the follow camera: it made lanterns slide away from the cursor reaching for them
     walker.updateCamera(camera, dt, { x: 0, y: 0 });
+    if (cine) applyCine(dt);
     followPos.copy(camera.position);
   }
   sky.position.copy(camera.position);
@@ -497,7 +566,9 @@ function updateTapMark(dt) { tapT = Math.max(0, tapT - dt * 1.2); tapMark.materi
 function update(dt) {
   T += dt;
   uniforms.time.value = T;
-  walker.update(dt, (screen === 'lake' || screen === 'card') ? heldKeys() : NO_KEYS, T);
+  const wasBusy = walker.busy();
+  walker.update(dt, (screen === 'lake' || screen === 'card') && !wasBusy ? heldKeys() : NO_KEYS, T);
+  if (wasBusy && !walker.busy() && (screen === 'lake' || screen === 'card')) { $('launchBtn').classList.remove('hidden'); $('tip').classList.remove('hidden'); }
   if (beach) beach.update(dt, walker.pos);
   updateTapMark(dt);
   updateLanterns(dt);
@@ -663,19 +734,25 @@ function sendLantern() {
   const dir = walker.lakeDir();
   const fromPier = water && shore.pierLaunchPoint(walker.pos.x, walker.pos.z);
   const at = fromPier || (water ? shore.nearestShore(walker.pos.x, walker.pos.z, -1.4) : { x: walker.pos.x + dir.x * 0.7, z: walker.pos.z + dir.z * 0.7 });
+  // the character kneels (water) or lifts it overhead (sky); the lantern sits in its hands until the release
+  const timing = walker.ceremony(composeMode);
+  const h = walker.hands(new THREE.Vector3());
   const L = makeLantern({
     id, mine: true, text, color: composeColor, mode: composeMode,
-    x: at.x, y: water ? 0 : walker.pos.y + 1.3, z: at.z,
-    vx: dir.x * (water ? 2.2 : 0.6), vz: dir.z * (water ? 2.2 : 0.6) + (water ? 0 : 0.25), vy: water ? 0 : 0.9,
-    alpha: 0, fadeIn: 1.2, fresh: 6,
+    x: h.x, y: h.y, z: h.z, alpha: 0, fadeIn: 0.5, fresh: 6 + timing.release,
   });
+  L.held = { t: 0, release: timing.release, to: { x: at.x, z: at.z },
+    v: { x: dir.x * (water ? 2.2 : 0.5), z: dir.z * (water ? 2.2 : 0.5) + (water ? 0 : 0.2), y: water ? 0 : 0.7 } };
+  L.grow = 0;
+  cine = { L, t: 0, mode: composeMode, dur: water ? 7.5 : 7, pos: camera.position.clone(), look: walker.camLook.clone() };
   save.mine.push({ id, text, color: composeColor, mode: composeMode });
   if (save.mine.length > 12) save.mine.shift();
   save.launched++;
   persist(); updateStats(); net.setMine(save.mine);
-  $('compose').classList.add('hidden'); $('launchBtn').classList.remove('hidden'); $('tip').classList.remove('hidden'); screen = 'lake';
+  $('compose').classList.add('hidden'); screen = 'lake';   // the button and tip come back when the pose ends
+  $('launchBtn').classList.add('hidden'); $('tip').classList.add('hidden'); closeCard();
   $('msg').value = ''; onMsgInput();
-  audio.plop();
+  setTimeout(() => audio.plop(), timing.release * 1000);
   toast(text ? `「${text}」 등불이 천천히 떠나가요` : '등불이 조용히 떠나가요');
   return L;
 }
@@ -770,6 +847,7 @@ const raycaster = new THREE.Raycaster();
 const waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const deckPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -shore.PIER_DECK);
 function walkToScreenPoint(cx, cy) {
+  if (walker.busy()) return;
   const ndc = new THREE.Vector2((cx / window.innerWidth) * 2 - 1, -(cy / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
   const hit = beach && raycaster.intersectObject(beach.mesh, false)[0];
@@ -810,6 +888,7 @@ let running = true;
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (frozen) { requestAnimationFrame(frame); return; }
   if (running) update(dt);
   render(dt);
   requestAnimationFrame(frame);
@@ -899,6 +978,11 @@ installStudio({
 // keep our extra helpers next to the contract's own verbs
 window.__studio.screenOf = (id) => { const L = lanterns.find(l => l.id === id); if (!L) return null; const v = new THREE.Vector3(L.x, L.y + (L.mode === 'water' ? 0.63 : 0.85), L.z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight, dist: +camera.position.distanceTo(new THREE.Vector3(L.x, L.y, L.z)).toFixed(1) }; };
 window.__studio.ids = () => lanterns.map(l => l.id);
+window.__studio.dbg = () => { const L = lanterns[lanterns.length - 1]; const h = walker.hands(); return { busy: walker.busy(), held: !!L.held, t: L.held && L.held.t, L: [L.x, L.y, L.z].map(v => +v.toFixed(2)), a: +L.alpha.toFixed(2), sc: +L.group.scale.x.toFixed(2), hands: [h.x, h.y, h.z].map(v => +v.toFixed(2)), cam: camera.position.toArray().map(v => +v.toFixed(1)), cine: !!cine }; };
+// test hooks: freeze the live loop and advance it in fixed 1/60 s steps (camera included)
+let frozen = false;
+window.__studio.freeze = (on = true) => { frozen = on; };
+window.__studio.advance = (ms) => { for (let i = 0, n = Math.round(ms / (1000 / 60)); i < n; i++) { update(1 / 60); render(1 / 60); } };
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];
 
