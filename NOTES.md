@@ -57,7 +57,7 @@ message, send ♡ (sparkle burst + chime), or hide it on your own screen. No sco
   set off from the character. Harness-injected keys are merged; player() reports the follow camera as the "eyes".
 - Verified: playtests for shore and walker passed on 9062c37; tap accuracy 28/28.
 - Known: no kneel/release animation or camera follow on launch; sideways walking can stick at the water's edge or the
-  back boundary; the character passes through stone lanterns; can't walk onto the pier.
+  back boundary; the character passes through stone lanterns; the pier is walkable (lanterns launched from it set off past its end).
 
 ## Current state
 v1 playable end-to-end: title, compose, launch (water/sky), read card, ♡, hide, stats, mute, ambience.
