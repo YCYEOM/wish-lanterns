@@ -127,3 +127,12 @@ body.hud-off #netline { display: none; }
   .mode { padding: 6px; font-size: 13px; }
   .main-btn.wide { margin-top: 8px; padding: 9px 20px; font-size: 15px; }
 }
+
+/* shooting-star wish: a pill that glows in for a few seconds while the star falls */
+.wish-btn { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); padding: 9px 18px; border-radius: 22px;
+  border: 1px solid rgba(255,236,180,.6); background: rgba(30,30,70,.55); color: #fff3d0; font-size: 14.5px; font-family: inherit;
+  cursor: pointer; white-space: nowrap; backdrop-filter: blur(6px); box-shadow: 0 0 22px rgba(255,226,150,.45);
+  animation: wishIn .5s ease-out, wishGlow 1.6s ease-in-out .5s infinite; }
+@keyframes wishIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes wishGlow { 0%,100% { box-shadow: 0 0 16px rgba(255,226,150,.35); } 50% { box-shadow: 0 0 30px rgba(255,226,150,.75); } }
+.wish-btn:active { transform: translateX(-50%) scale(.95); }

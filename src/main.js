@@ -24,8 +24,8 @@ const SAVE_KEY = 'wishLanterns.v1';
 function loadSave() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
-    return { launched: s.launched | 0, hearts: s.hearts | 0, received: s.received | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [] };
-  } catch { return { launched: 0, hearts: 0, received: 0, hidden: [], hearted: [], mine: [] }; }
+    return { launched: s.launched | 0, hearts: s.hearts | 0, received: s.received | 0, wishes: s.wishes | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [] };
+  } catch { return { launched: 0, hearts: 0, received: 0, wishes: 0, hidden: [], hearted: [], mine: [] }; }
 }
 let save = loadSave();
 function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch {} }
@@ -47,9 +47,11 @@ camera.position.copy(CAM_BASE);
 const LAKE = { cx: shore.LAKE.cx, cz: shore.LAKE.cz, rx: shore.LAKE.r, rz: shore.LAKE.r };
 const lakeE = shore.lakeE;
 
-const uniforms = { time: { value: 0 }, camPos: { value: new THREE.Vector3() } };
+// nightK: 0 = early evening (warm dusk glow on the horizon) .. 1 = deep night (dark horizon, brighter stars and Milky Way)
+const uniforms = { time: { value: 0 }, camPos: { value: new THREE.Vector3() }, nightK: { value: 0 } };
 
 const GLSL_COMMON = /* glsl */`
+uniform float nightK;
 float hash13(vec3 p){ p = fract(p*0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
 float noise3(vec3 p){
   vec3 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
@@ -59,32 +61,33 @@ float noise3(vec3 p){
 float fbm(vec3 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++){ s += a*noise3(p); p *= 2.03; a *= 0.5; } return s; }
 vec3 skyColor(vec3 dir, float t, float starAmt){
   float h = clamp(dir.y, 0.0, 1.0);
-  vec3 zen = vec3(0.010, 0.016, 0.060);
-  vec3 mid = vec3(0.040, 0.048, 0.150);
-  vec3 hor = vec3(0.260, 0.140, 0.230);
+  // the night deepens: the dusk glow sinks away, the zenith darkens, the stars come out stronger
+  vec3 zen = mix(vec3(0.010, 0.016, 0.060), vec3(0.006, 0.009, 0.040), nightK);
+  vec3 mid = mix(vec3(0.040, 0.048, 0.150), vec3(0.022, 0.030, 0.105), nightK);
+  vec3 hor = mix(vec3(0.260, 0.140, 0.230), vec3(0.090, 0.075, 0.170), nightK);
   vec3 col = mix(hor, mid, smoothstep(0.0, 0.16, h));
   col = mix(col, zen, smoothstep(0.14, 0.75, h));
   vec2 hz = normalize(vec2(dir.x, dir.z) + 1e-5);
   float g = pow(max(0.0, -hz.y), 3.0) * exp(-h * 10.0);
-  col += vec3(0.40, 0.18, 0.08) * g * 0.55;
+  col += vec3(0.40, 0.18, 0.08) * g * 0.55 * (1.0 - 0.85 * nightK);
   vec3 bn = normalize(vec3(0.62, 0.30, 0.72));
   float bd = dot(dir, bn);
   float band = exp(-bd*bd / 0.025) * smoothstep(0.0, 0.25, h);
   float n = fbm(dir * 5.0);
   float n2 = fbm(dir * 16.0 + 3.0);
-  col += vec3(0.15, 0.13, 0.26) * band * smoothstep(0.30, 0.85, n) * 1.3;
+  col += vec3(0.15, 0.13, 0.26) * band * smoothstep(0.30, 0.85, n) * (1.3 + 0.6 * nightK);
   col += vec3(0.20, 0.12, 0.10) * band * smoothstep(0.60, 0.95, n) * 0.6;
   col *= 1.0 - 0.45 * band * smoothstep(0.52, 0.72, n2);
   vec3 p = dir * 230.0;
   vec3 c = floor(p);
   float hs = hash13(c);
-  float thr = 0.982 - band * 0.02;
+  float thr = 0.982 - band * 0.02 - 0.006 * nightK;
   if (hs > thr) {
     vec3 sp = c + 0.5 + (vec3(hash13(c+1.7), hash13(c+2.3), hash13(c+3.1)) - 0.5) * 0.5;
     float d = length(p - sp);
     float s = (hs - thr) / (1.0 - thr);
     float tw = 0.65 + 0.35 * sin(t * (1.0 + s * 3.0) + hs * 50.0);
-    col += vec3(1.0, 0.94, 0.84) * smoothstep(0.42, 0.0, d) * tw * (0.35 + s * 2.2) * starAmt * smoothstep(0.0, 0.08, h);
+    col += vec3(1.0, 0.94, 0.84) * smoothstep(0.42, 0.0, d) * tw * (0.35 + s * 2.2) * (1.0 + 0.5 * nightK) * starAmt * smoothstep(0.0, 0.08, h);
   }
   return max(col, 0.0);
 }`;
@@ -397,31 +400,62 @@ starGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array([1, 0.9
 const shootingStar = new THREE.Line(starGeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
 shootingStar.visible = false; shootingStar.frustumCulled = false;
 scene.add(shootingStar);
+const starHead = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xfff1d0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+starHead.visible = false; starHead.scale.setScalar(9); scene.add(starHead);
 let star = null, nextStar = 8;
+// a shooting star crosses the sky where you are looking; for a few seconds you can make a wish on it
+let wishOpen = 0, lastStarHead = new THREE.Vector3(), lastStarNdc = [0, 0.6];
+function spawnStar() {
+  // pick the streak in screen space (upper sky of the current view), then put it far out along those rays,
+  // so it is always seen whatever way the camera is turned or tilted
+  const sx = rr(-0.75, 0.75), sy = rr(0.62, 0.86);
+  const ex = sx + (sx > 0 ? -1 : 1) * rr(0.35, 0.55), ey = sy - rr(0.18, 0.3);
+  const ray = (x, y) => new THREE.Vector3(x, y, 0.5).unproject(camera).sub(camera.position).normalize().multiplyScalar(320).add(camera.position);
+  const start = ray(sx, sy), end = ray(ex, ey);
+  const dir = end.clone().sub(start); const len = dir.length(); dir.normalize();
+  star = { p: start, d: dir, t: 0, life: 1.1, speed: len / 1.1, ndc: [ex, ey] };
+  nextStar = rr(16, 34) * (1 - 0.45 * uniforms.nightK.value);
+  if (screen === 'lake' || screen === 'card') { wishOpen = 5; $('wishBtn').classList.remove('hidden'); audio.chime([1567.98], 0, 0.05); }
+}
+function makeWish() {
+  if (wishOpen <= 0) return;
+  wishOpen = 0; $('wishBtn').classList.add('hidden');
+  save.wishes++; persist(); updateStats();
+  audio.chime([783.99, 987.77, 1174.66, 1567.98], 0.11);
+  // a fall of gold sparks from where the star went out
+  // from where the star went out, brought near enough to see the sparks fall
+  const base = new THREE.Vector3(lastStarNdc[0], lastStarNdc[1], 0.5).unproject(camera).sub(camera.position).normalize().multiplyScalar(40).add(camera.position);
+  for (let i = 0; i < 30; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: i % 3 ? 0xffe3a0 : 0xfff6dc, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    sp.position.copy(base); sp.scale.setScalar(2.2);
+    const a = rng() * Math.PI * 2, e = rr(-0.4, 1);
+    sp.userData = { v: new THREE.Vector3(Math.cos(a) * 9, 4 + e * 8, Math.sin(a) * 9), life: 1.8 + rng(), t: 0 };
+    scene.add(sp); sparks.push(sp);
+  }
+  toast('🌠 소원이 별에 닿았어요');
+}
 function updateStar(dt) {
   nextStar -= dt;
-  if (!star && nextStar <= 0) {
-    const a = rr(-0.9, 0.9);
-    const start = new THREE.Vector3(Math.sin(a) * 300, rr(110, 200), -260 + rr(-40, 40));
-    const dir = new THREE.Vector3(rr(-1, 1), rr(-0.55, -0.25), rr(-0.2, 0.2)).normalize();
-    star = { p: start, d: dir, t: 0, life: 0.9 };
-    nextStar = rr(14, 30);
-  }
+  if (!star && nextStar <= 0) spawnStar();
+  if (wishOpen > 0) { wishOpen -= dt; if (wishOpen <= 0) $('wishBtn').classList.add('hidden'); }
   if (star) {
     star.t += dt;
-    const head = star.p.clone().addScaledVector(star.d, star.t * 260);
-    const tail = head.clone().addScaledVector(star.d, -40 * Math.min(1, star.t * 4));
+    const head = star.p.clone().addScaledVector(star.d, star.t * (star.speed || 260));
+    const tail = head.clone().addScaledVector(star.d, -60 * Math.min(1, star.t * 4));
     const pa = starGeo.attributes.position.array;
     pa[0] = head.x; pa[1] = head.y; pa[2] = head.z; pa[3] = tail.x; pa[4] = tail.y; pa[5] = tail.z;
     starGeo.attributes.position.needsUpdate = true;
-    shootingStar.visible = true;
+    shootingStar.visible = true; starHead.visible = true; starHead.position.copy(head);
     shootingStar.material.opacity = Math.sin(Math.PI * Math.min(1, star.t / star.life));
-    if (star.t >= star.life) { star = null; shootingStar.visible = false; }
+    starHead.material.opacity = shootingStar.material.opacity;
+    lastStarHead.copy(head); if (star.ndc) lastStarNdc = star.ndc;
+    if (star.t >= star.life) { star = null; shootingStar.visible = false; starHead.visible = false; }
   }
 }
 
 // ---------------------------------------------------------------- simulation
 let T = 0;
+let nightOverride = null;
 // a lantern still in the character's hands during the launch pose
 const _hands = new THREE.Vector3();
 function holdLantern(L, dt) {
@@ -586,6 +620,8 @@ function updateTapMark(dt) { tapT = Math.max(0, tapT - dt * 1.2); tapMark.materi
 function update(dt) {
   T += dt;
   uniforms.time.value = T;
+  // the night slowly deepens and lifts again: a 20-minute swell from evening to deep night and back
+  uniforms.nightK.value = nightOverride ?? (0.5 - 0.5 * Math.cos(Math.PI * 2 * T / 1200));
   const wasBusy = walker.busy();
   walker.update(dt, (screen === 'lake' || screen === 'card') && !wasBusy ? heldKeys() : NO_KEYS, T);
   if (wasBusy && !walker.busy() && (screen === 'lake' || screen === 'card')) { $('launchBtn').classList.remove('hidden'); $('tip').classList.remove('hidden'); }
@@ -622,7 +658,7 @@ let online = 0;
 let lakeNo = null;
 function updateStats() {
   const people = lakeNo ? `🌙 호수 ${lakeNo}${online > 1 ? ` · 지금 ${online}명` : ''} · ` : (online > 1 ? `🌙 지금 호수에 ${online}명 · ` : '');
-  const got = save.received ? ` · 받은 반짝임 ${save.received}` : '';
+  const got = (save.received ? ` · 받은 반짝임 ${save.received}` : '') + (save.wishes ? ` · 별똥별 소원 ${save.wishes}` : '');
   $('stats').textContent = `${people}띄운 등불 ${save.launched} · 보낸 반짝임 ${save.hearts}${got}`;
 }
 
@@ -835,6 +871,7 @@ $('hideBtn').onclick = () => {
   const L = selected; closeCard(); removeLantern(L);
   toast('이 등불은 내 화면에서 숨겼어요', 2200);
 };
+$('wishBtn').addEventListener('click', (e) => { e.stopPropagation(); makeWish(); });
 $('invite').onclick = async () => {
   const url = net.inviteUrl();
   try { await navigator.clipboard.writeText(url); toast(`호수 ${lakeNo || 1} 초대 링크를 복사했어요 · 친구에게 보내 보세요`, 3500); }
@@ -961,7 +998,7 @@ function stepFrames(n) { for (let i = 0; i < n; i++) update(1 / 60); render(1 / 
 
 function reset(seed = 1) {
   reseed(seed);
-  T = 0; star = null; nextStar = 8;
+  T = 0; star = null; nextStar = 8; shootingStar.visible = starHead.visible = false; wishOpen = 0; $('wishBtn').classList.add('hidden');
   for (const s of sparks) { scene.remove(s); s.material.dispose(); } sparks.length = 0;
   closeCard();
   walker.reset(START.x, START.z);
@@ -1043,6 +1080,9 @@ window.__studio.screenOf = (id) => { const L = lanterns.find(l => l.id === id); 
 window.__studio.view = () => ({ ...walker.view, dir: walker.viewDir(), st: walker.state() });
 window.__studio.swatch = () => { COLORS.forEach((c, i) => { makeLantern({ id: 'sw' + i, color: c.id, mode: 'water', x: (i - 2) * 2.2, y: 0, z: 4 }); makeLantern({ id: 'sv' + i, color: c.id, mode: 'sky', x: (i - 2) * 2.2, y: 4.5, z: 2 }); });
   lanterns.filter(l => /^s[wv]/.test(l.id)).forEach(l => { l.vx = l.vz = l.vy = 0; l.speed = 0; }); return true; };
+window.__studio.night = (k) => { nightOverride = k; return uniforms.nightK.value; };
+window.__studio.star = () => { nextStar = 0; return true; };
+window.__studio.wish = () => { const b = !$('wishBtn').classList.contains('hidden'); makeWish(); return b; };
 window.__studio.ids = () => lanterns.map(l => l.id);
 window.__studio.dbg = () => { const L = lanterns[lanterns.length - 1]; const h = walker.hands(); return { busy: walker.busy(), held: !!L.held, t: L.held && L.held.t, L: [L.x, L.y, L.z].map(v => +v.toFixed(2)), a: +L.alpha.toFixed(2), sc: +L.group.scale.x.toFixed(2), hands: [h.x, h.y, h.z].map(v => +v.toFixed(2)), cam: camera.position.toArray().map(v => +v.toFixed(1)), cine: !!cine }; };
 // test hooks: freeze the live loop and advance it in fixed 1/60 s steps (camera included)

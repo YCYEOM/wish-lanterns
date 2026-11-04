@@ -76,4 +76,11 @@ https://ycyeom.github.io/wish-lanterns/
    scrolling row), launch button wrapped to 3 lines (nowrap), tip ran off screen (wraps; touch devices get a
    tap/drag tip instead of WASD/Q-E), stats pill ran under the buttons (ellipsis), safe-area insets (viewport-fit=cover).
    Still untested: the on-screen keyboard over the compose panel and real-device frame rate.
-7. Ideas: time-of-night drift, shooting-star wish.
+7. ~~Ideas~~ done:
+   - Time-of-night drift: `uniforms.nightK` (0 evening .. 1 deep night) swells over a 20-min cosine of play time;
+     skyColor (sky dome + water reflection) sinks the dusk glow, darkens the zenith, brightens stars / Milky Way.
+     `__studio.night(k|null)` pins it for shots.
+   - Shooting-star wish: stars are placed in screen space (upper sky of the current view) so they are always seen,
+     with a glowing head; more often deeper in the night. For 5 s a `#wishBtn` pill offers "별똥별에 소원 빌기";
+     tapping it chimes, drops gold sparks from where the star went out, toasts, and counts `save.wishes`
+     (shown in the stats pill). Local only (not networked). Test: `.studio/night.mjs` (`__studio.star()`, `wish()`).
