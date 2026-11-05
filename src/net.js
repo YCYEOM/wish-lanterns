@@ -88,6 +88,11 @@ export class Net {
       });
       this.sendLanterns = room.makeAction('lanterns');
       this.sendHeartAction = room.makeAction('heart');
+      this.sendWishAction = room.makeAction('wish');
+      this.sendWishAction.onMessage = (d) => {
+        if (room !== this.room || !d || !Number.isFinite(d.s) || typeof d.h !== 'string' || d.h.length > 60) return;
+        this.hooks.onWish && this.hooks.onWish(d.s, d.h);
+      };
       // where each person walks on the shore (a few times a second while moving) and when they kneel or lift
       this.sendPosAction = room.makeAction('pos');
       this.sendPosAction.onMessage = (d, meta) => {
@@ -152,6 +157,8 @@ export class Net {
   }
 
   poll() { if (this.room) this.refreshPeers(); }
+
+  sendWish(slot, h) { if (this.sendWishAction && this.peers > 0) { try { this.sendWishAction.send({ s: slot, h }); } catch {} } }
 
   // share where we stand: when we move more than a step, start a launch pose, or every few seconds anyway
   sendPos(x, z, cer, scarf) {

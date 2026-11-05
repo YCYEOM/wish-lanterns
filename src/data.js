@@ -52,6 +52,20 @@ export const WARM_MESSAGES = [
 // banned words are matched on a "skeleton" of the message: spaces, dots, digits, symbols and emoji between
 // letters are skipped and look-alike characters folded (1->i, 0->o, $->s, @->a ...), so "시 1 발", "f.u.c.k"
 // and "ㅅ_ㅂ" are caught too; the whole span in the original text becomes ♡
+// today's topic for the one line (the same for everyone on a given Seoul date)
+export const TOPICS = [
+  '오늘 고마웠던 사람에게', '요즘 나를 웃게 한 것', '내일의 나에게', '보고 싶은 사람', '올해 꼭 이루고 싶은 것',
+  '오늘 잘한 일 하나', '지금 듣고 싶은 말', '어릴 적 나에게', '좋아하는 계절의 냄새', '오늘 하늘은 어땠나요',
+  '미안했던 사람에게', '나를 버티게 하는 것', '요즘 가장 맛있었던 것', '가고 싶은 곳', '오늘의 작은 행복',
+  '응원하고 싶은 친구', '나에게 해 주고 싶은 말', '가족에게', '잊고 싶지 않은 순간', '요즘 설레는 일',
+  '쉬고 싶은 마음', '용기가 필요한 일', '고양이나 강아지에게', '첫눈이 오면 하고 싶은 일', '오늘 들은 노래',
+  '조금 느려도 괜찮은 일', '다시 만나고 싶은 사람', '나의 작은 습관', '오늘 밤의 기분', '내일 아침의 다짐',
+];
+export function topicToday(ms = Date.now()) {
+  const day = Math.floor((ms + 9 * 3600 * 1000) / 864e5);
+  return TOPICS[((day * 7) % TOPICS.length + TOPICS.length) % TOPICS.length];
+}
+
 const BANNED = [
   '씨발', '시발', '씨빨', '씌발', '씨바', '시빨', '쓰발', '씨팔', '시팔', 'ㅅㅂ', 'ㅆㅂ', 'ㅆㅃ', 'ㅅㅃ',
   '병신', '븅신', '빙신', 'ㅂㅅ', 'ㅄ', '개새끼', '개색', '개세끼', '새끼', '쌔끼', 'ㅅㄲ', '좆', '좃', '좇', '존나', '졸라', 'ㅈㄴ',

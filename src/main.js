@@ -1,5 +1,5 @@
 import * as THREE from '../vendor/three.module.js';
-import { COLORS, PRESETS, WARM_MESSAGES, cleanMessage } from './data.js';
+import { COLORS, PRESETS, WARM_MESSAGES, cleanMessage, topicToday } from './data.js';
 import { Audio } from './audio.js';
 import { Net, invitedLake } from './net.js';
 import { makeCoverDemos } from './cover-shot.js';
@@ -26,10 +26,12 @@ const SAVE_KEY = 'wishLanterns.v1';
 function loadSave() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
-    return { launched: s.launched | 0, hearts: s.hearts | 0, received: s.received | 0, wishes: s.wishes | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [] };
-  } catch { return { launched: 0, hearts: 0, received: 0, wishes: 0, hidden: [], hearted: [], mine: [] }; }
+    return { launched: s.launched | 0, hearts: s.hearts | 0, received: s.received | 0, wishes: s.wishes | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [],
+      log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false };
+  } catch { return { launched: 0, hearts: 0, received: 0, wishes: 0, hidden: [], hearted: [], mine: [], log: [], heartsBy: {}, lastVisit: 0, music: true }; }
 }
 let save = loadSave();
+if (!save.log.length && save.mine.length) save.log = save.mine.map(m => ({ id: m.id, text: m.text, color: m.color, mode: m.mode, at: 0, lake: 0 }));
 function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch {} }
 
 // ---------------------------------------------------------------- renderer / scene
@@ -55,10 +57,12 @@ const lakeE = shore.lakeE;
 // and rings the lake with raindrops, fogK pulls mist over the far shore; snowCover/leaf* tint the beach (shore.js)
 const uniforms = { time: { value: 0 }, camPos: { value: new THREE.Vector3() }, nightK: { value: 0 },
   cloudK: { value: 0 }, rainK: { value: 0 }, fogK: { value: 0 }, ffAmt: { value: 0.45 },
-  snowCover: { value: 0 }, season: { value: new THREE.Vector4(0, 0, 1, 0) } };   // season: spring, summer, autumn, winter weights
+  snowCover: { value: 0 }, season: { value: new THREE.Vector4(0, 0, 1, 0) },
+  // tonight's real moon: phase 0 new .. 0.5 full .. 1 new again, low over the far shore
+  moonPhase: { value: 0.5 }, moonDir: { value: new THREE.Vector3(0.36, 0.115, -0.93).normalize() } };   // season: spring, summer, autumn, winter weights
 
 const GLSL_COMMON = /* glsl */`
-uniform float nightK; uniform float cloudK; uniform float rainK; uniform float fogK;
+uniform float nightK; uniform float cloudK; uniform float rainK; uniform float fogK; uniform float moonPhase; uniform vec3 moonDir;
 float hash13(vec3 p){ p = fract(p*0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
 float noise3(vec3 p){
   vec3 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
@@ -104,6 +108,30 @@ vec3 skyColor(vec3 dir, float t, float starAmt){
     float s = (hs - thr) / (1.0 - thr);
     float tw = 0.65 + 0.35 * sin(t * (1.0 + s * 3.0) + hs * 50.0);
     col += vec3(1.0, 0.94, 0.84) * smoothstep(0.42, 0.0, d) * tw * (0.35 + s * 2.2) * (1.0 + 0.5 * nightK) * (1.0 - cl) * (1.0 - 0.6 * rainK) * starAmt * smoothstep(0.0, 0.08, h);
+  }
+  // the moon: a lit disc in tonight's phase (terminator from a light that swings round it over the month),
+  // faint earthshine on the dark part, a soft halo that grows with how much of it is lit; clouds cover it
+  {
+    float R = 0.032;
+    vec3 rgt = normalize(cross(moonDir, vec3(0.0, 1.0, 0.0))), upv = cross(rgt, moonDir);
+    vec2 q = vec2(dot(dir, rgt), dot(dir, upv)) / R;
+    float facing = dot(dir, moonDir);
+    float lit = 0.5 - 0.5 * cos(6.2831853 * moonPhase);              // 0 new .. 1 full
+    if (facing > 0.0) {
+      float r2 = dot(q, q);
+      if (r2 < 1.0) {
+        float z = sqrt(1.0 - r2);
+        float ph = 6.2831853 * moonPhase;
+        vec3 L = vec3(sin(ph), 0.0, -cos(ph));
+        float day = smoothstep(-0.06, 0.06, dot(vec3(q.x, q.y, z), L));   // waxing lit on the right, waning on the left
+        float maria = 0.82 + 0.18 * smoothstep(0.35, 0.7, fbm(vec3(q * 2.3, 7.0)));
+        vec3 mc = vec3(1.05, 0.98, 0.86) * maria * (0.75 + 0.25 * z);
+        float edge = smoothstep(1.0, 0.92, r2);
+        col = mix(col, mix(col * 0.8 + mc * 0.012, mc * 1.5, day), edge * (1.0 - cl));   // the dark part barely shows against the sky
+      }
+      float md = length(q) * R;
+      col += vec3(0.32, 0.30, 0.38) * exp(-md * 26.0) * (0.15 + 0.85 * lit) * 0.55 * (1.0 - 0.8 * cl) * (1.0 - 0.6 * fogK);
+    }
   }
   // cloud undersides catch a little of the dusk glow and the lantern-lit lake below
   // moonlit tops lighter than the sky behind, edges catching more than the dense middles
@@ -300,6 +328,22 @@ fetchSeoulWeather(4000).then((w) => {
   // on the title the lake keeps a clear night of the season; the real weather rolls in once you are on the beach
   if (screen !== 'title') { applyAtmos(false); noticeWeather(); }
 });
+// the moon's phase from the date (mean synodic month from the new moon of 2000-01-06 18:14 UTC)
+function moonPhaseNow(ms = Date.now()) {
+  const syn = 29.530588853, age = ((ms - Date.UTC(2000, 0, 6, 18, 14)) / 864e5) % syn;
+  return ((age + syn) % syn) / syn;
+}
+function moonName(p) {
+  if (p < 0.03 || p > 0.97) return '🌑 달 없는 밤';
+  if (p < 0.22) return '🌒 초승달';
+  if (p < 0.28) return '🌓 상현달';
+  if (p < 0.47) return '🌔 차오르는 달';
+  if (p < 0.53) return '🌕 보름달';
+  if (p < 0.72) return '🌖 기우는 달';
+  if (p < 0.78) return '🌗 하현달';
+  return '🌘 그믐달';
+}
+uniforms.moonPhase.value = moonPhaseNow();
 const ATMOS_VIEW = { pos: [-6, 3.2, 24], target: [2, 3.5, -40] };
 function forceAtmos(w, s) { forcedWeather = w; forcedSeason = s; applyAtmos(true); }
 function realAtmos() { if (forcedWeather || forcedSeason) forceAtmos(null, null); }
@@ -308,13 +352,16 @@ function weatherLine() {
   if (!seoul.weather) return `${S.emoji} ${S.name}밤의 호수예요`;
   const W = WEATHER[seoul.weather];
   const t = typeof seoul.temp === 'number' ? ` · ${Math.round(seoul.temp)}°` : '';
-  return `${W.emoji} ${S.name}밤, ${W.line}${t}`;
+  const moon = seoul.weather === 'clear' || seoul.weather === 'cloudy' ? ` · ${moonName(uniforms.moonPhase.value)}` : '';
+  return `${W.emoji} ${S.name}밤, ${W.line}${t}${moon}`;
 }
 function noticeWeather() {
   if (weatherNoticed || !seoul.tried) return;
   weatherNoticed = true;
   applyAtmos(false);                   // rain rings spread, clouds gather, snow starts to fall, over a few seconds
-  setTimeout(() => toast(weatherLine(), 5200), invitedLake() ? 5200 : 1600);
+  const wait = invitedLake() ? 5200 : 1600;
+  toastBusyUntil = Math.max(toastBusyUntil, Date.now() + wait + 5200);   // keep the queue clear for it
+  setTimeout(() => toast(weatherLine(), 5200), wait);
 }
 
 // ---------------------------------------------------------------- lanterns
@@ -477,41 +524,74 @@ shootingStar.visible = false; shootingStar.frustumCulled = false;
 scene.add(shootingStar);
 const starHead = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xfff1d0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
 starHead.visible = false; starHead.scale.setScalar(9); scene.add(starHead);
-let star = null, nextStar = 8;
+let star = null, nextStar = 1e9;   // nextStar: only for a forced star (tests); the real ones come from the clock
+// shooting stars are shared: everyone computes the same schedule from the wall clock (a 24 s slot, about two
+// in three slots carry a star at a moment set by the slot), so a lake sees the same star at the same time
+const STAR_SLOT = 24;
+let starSlot = -1, starAt = 0, starSide = 1, wishSlot = -1;
+const slotHash = (n, k) => { let h = (n * 374761393 + k * 668265263) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function scheduleStars(nowMs) {
+  const slot = Math.floor(nowMs / 1000 / STAR_SLOT);
+  if (slot === starSlot) return;
+  starSlot = slot;
+  starAt = slotHash(slot, 1) < 0.66 ? (slot * STAR_SLOT + 2 + slotHash(slot, 2) * (STAR_SLOT - 6)) * 1000 : 0;
+  starSide = slotHash(slot, 3) < 0.5 ? -1 : 1;
+}
 // a shooting star crosses the sky where you are looking; for a few seconds you can make a wish on it
 let wishOpen = 0, lastStarHead = new THREE.Vector3(), lastStarNdc = [0, 0.6];
-function spawnStar() {
+function spawnStar(slot = starSlot) {
   // pick the streak in screen space (upper sky of the current view), then put it far out along those rays,
-  // so it is always seen whatever way the camera is turned or tilted
-  const sx = rr(-0.75, 0.75), sy = rr(0.62, 0.86);
-  const ex = sx + (sx > 0 ? -1 : 1) * rr(0.35, 0.55), ey = sy - rr(0.18, 0.3);
+  // so it is always seen whatever way the camera is turned or tilted; its side and slope come from the slot,
+  // so everyone sees it fall the same way
+  const sx = starSide * (0.25 + 0.45 * slotHash(slot, 4)), sy = 0.62 + 0.24 * slotHash(slot, 5);
+  const ex = sx - starSide * (0.35 + 0.2 * slotHash(slot, 6)), ey = sy - (0.18 + 0.12 * slotHash(slot, 7));
+  wishSlot = slot;
   const ray = (x, y) => new THREE.Vector3(x, y, 0.5).unproject(camera).sub(camera.position).normalize().multiplyScalar(320).add(camera.position);
   const start = ray(sx, sy), end = ray(ex, ey);
   const dir = end.clone().sub(start); const len = dir.length(); dir.normalize();
   star = { p: start, d: dir, t: 0, life: 1.1, speed: len / 1.1, ndc: [ex, ey] };
-  nextStar = rr(16, 34) * (1 - 0.45 * uniforms.nightK.value);
   if (screen === 'lake' || screen === 'card') { wishOpen = 5; $('wishBtn').classList.remove('hidden'); audio.chime([1567.98], 0, 0.05); }
+}
+// someone else on the lake wished on the same star: a softer fall of sparks where it went out, and a line
+const wishSeen = new Set(), wishesBySlot = new Map();
+function othersWished(slot) { return wishesBySlot.get(slot) || 0; }
+function otherWish(slot, h) {
+  if (!h || wishSeen.has(h)) return; wishSeen.add(h);
+  wishesBySlot.set(slot, othersWished(slot) + 1);
+  if (screen === 'title' || Math.abs(slot - starSlot) > 1) return;
+  sparkFall(14, 0.7);
+  audio.chime([1174.66, 1567.98], 0.14);
+  toast(othersWished(slot) > 1 ? `✨ ${othersWished(slot)}명이 같은 별똥별에 소원을 빌었어요` : '✨ 누군가 같은 별똥별에 소원을 빌었어요', 2800);
 }
 function makeWish() {
   if (wishOpen <= 0) return;
   wishOpen = 0; $('wishBtn').classList.add('hidden');
   save.wishes++; persist(); updateStats();
+  const h = net.myKey + 'w' + Date.now().toString(36);
+  wishSeen.add(h); net.sendWish(wishSlot, h); board.wish(wishSlot, h);
   audio.chime([783.99, 987.77, 1174.66, 1567.98], 0.11);
   // a fall of gold sparks from where the star went out
   // from where the star went out, brought near enough to see the sparks fall
+  sparkFall(30, 1);
+  toast(othersWished(wishSlot) ? `🌠 소원이 별에 닿았어요 · ${othersWished(wishSlot)}명이 같은 별에 빌었어요` : '🌠 소원이 별에 닿았어요');
+}
+// a fall of gold sparks from where the star went out, brought near enough to see them fall
+function sparkFall(n, k) {
   const base = new THREE.Vector3(lastStarNdc[0], lastStarNdc[1], 0.5).unproject(camera).sub(camera.position).normalize().multiplyScalar(40).add(camera.position);
-  for (let i = 0; i < 30; i++) {
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: i % 3 ? 0xffe3a0 : 0xfff6dc, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
-    sp.position.copy(base); sp.scale.setScalar(2.2);
+  for (let i = 0; i < n; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: i % 3 ? 0xffe3a0 : 0xfff6dc, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: k }));
+    sp.position.copy(base); sp.scale.setScalar(2.2 * (0.6 + 0.4 * k));
     const a = rng() * Math.PI * 2, e = rr(-0.4, 1);
     sp.userData = { v: new THREE.Vector3(Math.cos(a) * 9, 4 + e * 8, Math.sin(a) * 9), life: 1.8 + rng(), t: 0 };
     scene.add(sp); sparks.push(sp);
   }
-  toast('🌠 소원이 별에 닿았어요');
 }
 function updateStar(dt) {
   nextStar -= dt;
-  if (!star && nextStar <= 0) spawnStar();
+  const nowMs = Date.now();
+  scheduleStars(nowMs);
+  if (!star && starAt && nowMs >= starAt) { starAt = 0; spawnStar(); }
+  if (!star && nextStar <= 0) { nextStar = 1e9; spawnStar(starSlot + 100000); }
   if (wishOpen > 0) { wishOpen -= dt; if (wishOpen <= 0) $('wishBtn').classList.add('hidden'); }
   if (star) {
     star.t += dt;
@@ -797,7 +877,7 @@ const net = new Net({
     const L = lanterns.find(l => l.id === localId);
     if (L) { burst(L); L.hearts++; if (selected === L) refreshHeart(); }
     if (L && L.mine) {
-      save.received++; persist(); updateStats();
+      save.received++; save.heartsBy[L.id] = (save.heartsBy[L.id] | 0) + 1; persist(); updateStats();
       toast(L.text ? `누군가 「${L.text}」 등불에 ♡를 보냈어요` : '누군가 내 등불에 ♡를 보냈어요');
       audio.chime([783.99, 987.77, 1174.66]);
     }
@@ -808,7 +888,7 @@ const net = new Net({
     lakeNo = n; online = 1; updateStats();
     for (const r of others.values()) r.w.dispose();
     others.clear();
-    board.join(n);                     // the lanterns left on this lake today, and new ones live through the relays
+    joinBoard(n);                      // the lanterns left on this lake today, and new ones live through the relays
   },
   onJoin() { if (screen !== 'title') toast('누군가 호숫가에 왔어요', 2400); },
   // the other people on this lake walk the shore as characters of their own (scarf colour by person)
@@ -823,6 +903,7 @@ const net = new Net({
     if (d.cer && !r.w.busy()) r.w.ceremony(d.cer);
     else if (!d.cer) r.w.walkTo(d.x, d.z);
   },
+  onWish(slot, h) { otherWish(slot, h); },
   onLeave(id) { const r = others.get(id); if (r) { r.w.dispose(); others.delete(id); } },
   onStatus(msg) { toast(msg, 4000); },
 });
@@ -831,21 +912,50 @@ net.setMine(save.mine);
 const heartSeen = new Set();
 const myScarf = [...net.myKey].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7) % 6;
 // it loads in the background (with its signing library) so the first screen stays light
-let board = { status: 'off', join() {}, post() {}, heart() {} };
+let board = { status: 'off', join() {}, post() {}, heart() {}, wish() {} };
+// hearts for our lanterns that came while we were away: counted once, told once a few seconds in
+let awayCount = 0, awayTimer = 0, visitSince = save.lastVisit;
+function joinBoard(n) {
+  board.join(n, net.myKey, visitSince);
+  save.lastVisit = Math.floor(Date.now() / 1000); persist();
+}
+function awayHeart(netId, h) {
+  if (!h || heartSeen.has(h)) return; heartSeen.add(h);
+  const mineKey = net.myKey + ':';
+  if (!netId.startsWith(mineKey)) return;
+  const id = netId.slice(mineKey.length);
+  save.received++; save.heartsBy[id] = (save.heartsBy[id] | 0) + 1; persist(); updateStats();
+  const L = lanterns.find(l => l.id === id); if (L) L.hearts++;
+  awayCount++;
+  clearTimeout(awayTimer);
+  awayTimer = setTimeout(() => {
+    // after the weather line and any other line on screen, so it is read on its own
+    const show = () => {
+      if (screen === 'title' || !weatherNoticed || Date.now() < toastBusyUntil + 300) { setTimeout(show, 600); return; }
+      toast(`🌙 자리를 비운 사이, 내 등불에 ♡ ${awayCount}개가 도착했어요`, 5200);
+      audio.chime([659.25, 783.99, 987.77, 1318.5], 0.12); awayCount = 0;
+    };
+    show();
+  }, 3000);
+}
 import('./board.js').then(({ Board }) => {
   board = new Board({
     // with people connected directly, give their own message a moment to arrive first (it knows who launched it)
     onLantern(e, fresh) { if (fresh && net.peers > 0) setTimeout(() => net.hooks.onLantern(e, '', fresh), 2500); else net.hooks.onLantern(e, '', fresh); },
     onHeart(netId, h) { net.hooks.onHeart(netId, h); },
+    onWish(slot, h) { otherWish(slot, h); },
+    onAwayHeart(netId, h) { awayHeart(netId, h); },
   });
-  if (lakeNo) board.join(lakeNo);
+  if (lakeNo) joinBoard(lakeNo);
 }).catch(() => {});
 // the connection line at the bottom is for debugging only: shown with ?debug in the address
 const SHOW_NETLINE = /[?&]debug\b/.test(location.search);
 if (!SHOW_NETLINE) $('netline').style.display = 'none';
 setInterval(() => { net.poll(); const d = $('netline'); if (d && SHOW_NETLINE) d.textContent = net.statusLine() + ` · board ${board.status}`; }, 250);
 let toastTimer = 0;
+let toastBusyUntil = 0;
 function toast(msg, ms = 3200) {
+  toastBusyUntil = Date.now() + ms;
   const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
   t.style.animation = 'none'; void t.offsetWidth; t.style.animation = '';
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), ms);
@@ -888,6 +998,7 @@ document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => closePa
 
 function openCompose() {
   closeCard();
+  $('topic').textContent = `💭 오늘의 주제 · ${topicToday()}`;
   $('toast').classList.add('hidden');   // the weather / arrival line never sits over the panel
   $('compose').classList.remove('hidden');
   $('launchBtn').classList.add('hidden'); $('tip').classList.add('hidden');
@@ -895,6 +1006,7 @@ function openCompose() {
   setTimeout(() => $('msg').focus(), 50);
 }
 function closePanel(which) {
+  if (which === 'diary') { $('diary').classList.add('hidden'); if (screen === 'diary') screen = 'lake'; return; }
   if (which === 'compose') { $('compose').classList.add('hidden'); $('launchBtn').classList.remove('hidden'); $('tip').classList.remove('hidden'); screen = 'lake'; }
   else closeCard();
 }
@@ -936,6 +1048,8 @@ function sendLantern() {
   L.grow = 0;
   cine = { L, t: 0, mode: composeMode, dur: water ? 7.5 : 7, pos: camera.position.clone(), look: walker.camLook.clone() };
   save.mine.push({ id, text, color: composeColor, mode: composeMode });
+  save.log.push({ id, text, color: composeColor, mode: composeMode, at: Date.now(), lake: lakeNo || 0 });
+  if (save.log.length > 200) save.log.shift();
   if (save.mine.length > 12) save.mine.shift();
   save.launched++;
   persist(); updateStats(); net.setMine(save.mine);
@@ -1003,6 +1117,37 @@ $('invite').onclick = async () => {
   catch { toast(url, 8000); }
   audio.tick();
 };
+// today's topic: tapping it puts it in the line as a start
+$('topic').onclick = () => { const m = $('msg'); if (!m.value.trim()) { m.value = topicToday() + ' '; onMsgInput(); } m.focus(); audio.tick(); };
+// background music, remembered between visits
+function syncMusic() { $('music').classList.toggle('off', !save.music); $('music').title = save.music ? '배경음악 끄기' : '배경음악 켜기'; }
+audio.musicOn = save.music; syncMusic();
+$('music').onclick = () => { audio.start(); save.music = !save.music; persist(); audio.setMusic(save.music); syncMusic(); audio.tick(); };
+// the lantern diary: what you launched, the hearts each got, and your totals
+function dateKST(ms) { const d = new Date(ms + 9 * 3600 * 1000); return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`; }
+function openDiary() {
+  closeCard(); if (screen === 'compose') closePanel('compose');
+  const c = COLORS;
+  $('diarySum').innerHTML = `<span>띄운 등불 <b>${save.launched}</b></span><span>받은 반짝임 <b>${save.received}</b></span><span>보낸 반짝임 <b>${save.hearts}</b></span><span>별똥별 소원 <b>${save.wishes}</b></span>`;
+  const list = $('diaryList'); list.textContent = '';
+  const items = save.log.length ? [...save.log].reverse() : [];
+  if (!items.length) { const e = document.createElement('div'); e.className = 'diary-empty'; e.textContent = '아직 띄운 등불이 없어요. 물가로 가서 첫 등불을 띄워 보세요.'; list.appendChild(e); }
+  for (const it of items) {
+    const row = document.createElement('div'); row.className = 'diary-item';
+    const dot = document.createElement('span'); dot.className = 'diary-dot'; dot.style.setProperty('--c', (c.find(x => x.id === it.color) || c[0]).css);
+    const body = document.createElement('div'); body.className = 'diary-text';
+    body.textContent = it.text ? `「${it.text}」` : '말없이 띄운 등불';
+    const meta = document.createElement('div'); meta.className = 'diary-meta';
+    meta.textContent = `${it.at ? dateKST(it.at) + ' 밤' : ''}${it.lake ? ` · 호수 ${it.lake}` : ''} · ${it.mode === 'sky' ? '하늘로' : '물 위로'}`;
+    body.appendChild(meta);
+    const hb = document.createElement('span'); hb.className = 'diary-heart'; const n = save.heartsBy[it.id] | 0; hb.textContent = n ? `♡ ${n}` : '';
+    row.append(dot, body, hb); list.appendChild(row);
+  }
+  $('toast').classList.add('hidden');
+  $('diary').classList.remove('hidden'); screen = 'diary';
+  audio.tick();
+}
+$('diaryBtn').onclick = () => { audio.start(); if (screen === 'diary') closePanel('diary'); else openDiary(); };
 $('mute').onclick = () => { audio.setMuted(!audio.muted); $('mute').textContent = audio.muted ? '🔇' : '🔊'; };
 
 // picking
@@ -1043,6 +1188,7 @@ function tapAt(cx, cy) {
 canvas.addEventListener('pointerdown', (e) => {
   if (screen === 'title') { startGame(); return; }
   if (screen === 'compose') { closePanel('compose'); return; }
+  if (screen === 'diary') { closePanel('diary'); return; }
   if (press) return;                                   // a second finger: ignore
   press = { id: e.pointerId, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, drag: false };
   try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -1104,7 +1250,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeCard(); if (screen === 'compose') closePanel('compose'); }
+  if (e.key === 'Escape') { closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary'); }
   else if ((e.key === 'Enter' || e.key === ' ') && screen === 'title') startGame();
 });
 
@@ -1123,7 +1269,7 @@ function stepFrames(n) { for (let i = 0; i < n; i++) update(1 / 60); render(1 / 
 
 function reset(seed = 1) {
   reseed(seed);
-  T = 0; star = null; nextStar = 8; shootingStar.visible = starHead.visible = false; wishOpen = 0; $('wishBtn').classList.add('hidden');
+  T = 0; star = null; nextStar = 1e9; shootingStar.visible = starHead.visible = false; wishOpen = 0; $('wishBtn').classList.add('hidden');
   for (const s of sparks) { scene.remove(s); s.material.dispose(); } sparks.length = 0;
   closeCard();
   walker.reset(START.x, START.z);
@@ -1214,6 +1360,7 @@ window.__studio.screenOf = (id) => { const L = lanterns.find(l => l.id === id); 
 // force a weather / season for looking at it (null: back to today's Seoul); instant=true skips the easing
 window.__studio.weather = (kind, instant) => { forcedWeather = WEATHER_KINDS.includes(kind) ? kind : null; applyAtmos(!!instant); return atmos.state(); };
 window.__studio.season = (name, instant) => { forcedSeason = SEASON_NAMES.includes(name) ? name : null; applyAtmos(!!instant); return atmos.state(); };
+window.__studio.moon = (p) => { if (typeof p === 'number') uniforms.moonPhase.value = p; else uniforms.moonPhase.value = moonPhaseNow(); return { phase: +uniforms.moonPhase.value.toFixed(3), name: moonName(uniforms.moonPhase.value) }; };
 window.__studio.atmos = () => ({ ...atmos.state(), seoul: { ...seoul }, line: weatherLine() });
 window.__studio.view = () => ({ ...walker.view, dir: walker.viewDir(), st: walker.state() });
 window.__studio.swatch = () => { COLORS.forEach((c, i) => { makeLantern({ id: 'sw' + i, color: c.id, mode: 'water', x: (i - 2) * 2.2, y: 0, z: 4 }); makeLantern({ id: 'sv' + i, color: c.id, mode: 'sky', x: (i - 2) * 2.2, y: 4.5, z: 2 }); });
@@ -1222,6 +1369,9 @@ window.__studio.night = (k) => { nightOverride = k; return uniforms.nightK.value
 window.__studio.star = () => { nextStar = 0; return true; };
 window.__studio.wish = () => { const b = !$('wishBtn').classList.contains('hidden'); makeWish(); return b; };
 window.__studio.others = () => [...others.values()].map(r => ({ ...r.w.state(), busy: r.w.busy() }));
+window.__studio.starInfo = () => ({ starSlot, starAt, now: Date.now(), wishOpen, star: !!star });
+window.__studio.heartId = (nid) => { const L = lanterns.find(l => l.id === nid); if (!L) return false; openCard(L); $('heartBtn').click(); closeCard(); return true; };
+window.__studio.otherWish = (h) => otherWish(wishSlot, h || ('t' + Date.now()));
 window.__studio.ids = () => lanterns.map(l => l.id);
 window.__studio.dbg = () => { const L = lanterns[lanterns.length - 1]; const h = walker.hands(); return { busy: walker.busy(), held: !!L.held, t: L.held && L.held.t, L: [L.x, L.y, L.z].map(v => +v.toFixed(2)), a: +L.alpha.toFixed(2), sc: +L.group.scale.x.toFixed(2), hands: [h.x, h.y, h.z].map(v => +v.toFixed(2)), cam: camera.position.toArray().map(v => +v.toFixed(1)), cine: !!cine }; };
 // test hooks: freeze the live loop and advance it in fixed 1/60 s steps (camera included)

@@ -128,3 +128,24 @@ https://ycyeom.github.io/wish-lanterns/
 7. Review leftovers: shoreFog used sRGB-valued fog colours in a linear shader -> pale band under the far pines and
    grey far canopies; now the scene fog colours in linear. Driftwood/twigs sit lower on the sand.
    Still open: cloudy is an even overcast rather than distinct cloud shapes.
+
+## Ideas built (from the suggestion list)
+- Real moon: `moonPhaseNow()` from the date (mean synodic month), drawn in skyColor at `moonDir` (low, right of
+  centre) with a terminator (waxing lit right, waning left), faint dark side, halo by lit fraction, hidden by
+  clouds, mirrored on the lake. The weather line adds its name on clear/cloudy nights ("· 🌘 그믐달").
+  `__studio.moon(phase|null)`. Test: `.studio/moon.mjs`.
+- Shared shooting stars: the schedule comes from the wall clock (24 s slots, ~63% carry a star at a slot-set moment,
+  side/slope from the slot), so everyone on a lake sees the same star together. A wish is sent (P2P `wish` action +
+  board kind 21079); others get a softer spark fall and "✨ 누군가 같은 별똥별에 소원을 빌었어요", and the wisher's
+  own line counts who else wished. `__studio.star()` still forces one locally. Test: `.studio/stars2.mjs`.
+- Hearts while away: hearts are now stored a week (board kind 1078, tag `w=<lantern owner>`); on joining, hearts
+  for our lanterns since `save.lastVisit` are counted once and told after the weather line:
+  "🌙 자리를 비운 사이, 내 등불에 ♡ N개가 도착했어요" (toast queue: `toastBusyUntil`). Test: `.studio/away.mjs`.
+- Today's topic: `topicToday()` (data.js, 30 topics by Seoul date) shown in the compose panel; tapping it starts
+  the line with it.
+- Lantern diary (📖): `save.log` (up to 200; old saves backfilled from `save.mine`) with date, lake, direction and
+  hearts per lantern (`save.heartsBy`), plus totals. Test: `.studio/diary.mjs`.
+- Music (🎵): audio.js `setMusic()` — slow Am-F-C-G pad and a music-box melody on the A-minor pentatonic, quiet,
+  on by default, remembered in `save.music`.
+- Phones: on screens <= 520 px wide the stats pill moves under the four round buttons; on very short screens the
+  compose panel drops its sub-labels so 띄우기 stays on screen.

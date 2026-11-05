@@ -23,6 +23,8 @@
     <div id="stats"></div>
     <button id="invite" class="icon-btn invite" title="친구 초대 링크 복사">🔗</button>
     <button id="mute" class="icon-btn" title="소리">🔊</button>
+    <button id="music" class="icon-btn music" title="배경음악">🎵</button>
+    <button id="diaryBtn" class="icon-btn diary" title="나의 등불 기록">📖</button>
     <button id="wishBtn" class="wish-btn hidden">🌠 별똥별에 소원 빌기</button>
     <div id="tip">WASD·방향키나 땅을 눌러 걸어요 · 화면을 끌거나 Q/E로 둘러봐요 · 등불을 누르면 한마디가 보여요</div>
     <button id="launchBtn" class="main-btn">🏮 물가로 가서 등불 띄우기</button>
@@ -34,12 +36,13 @@
     <div class="label">등불 색</div>
     <div id="swatches"></div>
     <div class="label">한마디 <span class="sub">(비워도 괜찮아요)</span></div>
+    <button id="topic" class="topic" title="오늘의 주제로 쓰기"></button>
     <div class="input-wrap">
       <input id="msg" maxlength="30" placeholder="마음을 짧게 적어 보세요" autocomplete="off" />
       <span id="count">0/30</span>
     </div>
     <div id="presets"></div>
-    <div class="label">어디로 보낼까요?</div>
+    <div class="label where">어디로 보낼까요?</div>
     <div class="modes">
       <button class="mode on" data-mode="water">🌊 물 위로</button>
       <button class="mode" data-mode="sky">✨ 하늘로</button>
@@ -55,6 +58,13 @@
       <button id="heartBtn" class="heart-btn">♡ <span id="heartCount">0</span></button>
       <button id="hideBtn" class="ghost-btn">숨기기</button>
     </div>
+  </div>
+
+  <div id="diary" class="panel hidden">
+    <button class="close" data-close="diary">✕</button>
+    <h2>나의 등불 기록</h2>
+    <div id="diarySum" class="diary-sum"></div>
+    <div id="diaryList" class="diary-list"></div>
   </div>
 
   <div id="toast" class="hidden"></div>

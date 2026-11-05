@@ -14,7 +14,9 @@
 import { schnorr, utils } from '@noble/secp256k1';
 
 const RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://nostr.mom', 'wss://relay.primal.net', 'wss://offchain.pub'];
-const KIND_LANTERN = 30078, KIND_HEART = 21078;
+// hearts are kept a week (kind 1078, tagged w=<lantern owner>) so the owner hears about them on the next visit
+const KIND_LANTERN = 30078, KIND_HEART = 1078, KIND_WISH = 21079;
+const HEART_TTL = 7 * 24 * 3600;
 const TTL = 24 * 3600;          // seconds a lantern stays on the board
 const MAX_FETCH = 80;
 const TAG = (lake) => `wishlanterns-v1-lake-${lake}`;
@@ -54,7 +56,8 @@ export class Board {
     return ev;
   }
 
-  join(lake) {
+  // me: our owner key; since: unix seconds of our last visit (hearts for our lanterns after it are fetched)
+  join(lake, me, since) {
     if (typeof WebSocket === 'undefined') return;
     this.leave();
     this.lake = lake; this.joinedAt = now(); this.status = 'connecting';
@@ -64,9 +67,10 @@ export class Board {
       try { ws = new WebSocket(url); } catch { continue; }
       const sub = 'wl' + (++this.subN) + Date.now().toString(36);
       ws.onopen = () => {
-        ws.send(JSON.stringify(['REQ', sub,
-          { kinds: [KIND_LANTERN], '#t': [tag], since: now() - TTL, limit: MAX_FETCH },
-          { kinds: [KIND_HEART], '#t': [tag], since: now() }]));
+        const filters = [{ kinds: [KIND_LANTERN], '#t': [tag], since: now() - TTL, limit: MAX_FETCH },
+          { kinds: [KIND_HEART, KIND_WISH], '#t': [tag], since: now() }];
+        if (me) filters.push({ kinds: [KIND_HEART], '#w': [me], since: Math.max(since || 0, now() - HEART_TTL), limit: 200 });
+        ws.send(JSON.stringify(['REQ', sub, ...filters]));
       };
       ws.onmessage = (m) => {
         let msg; try { msg = JSON.parse(m.data); } catch { return; }
@@ -89,11 +93,17 @@ export class Board {
     if (ev.pubkey === this.pk) return;                       // our own come back from the relays
     const exp = (ev.tags || []).find((t) => t[0] === 'expiration');
     if (exp && +exp[1] < now()) return;
+    if (ev.kind === KIND_WISH) {
+      let d; try { d = JSON.parse(ev.content); } catch { return; }
+      if (d && Number.isFinite(d.s) && typeof d.h === 'string' && d.h.length < 60) this.hooks.onWish && this.hooks.onWish(d.s, d.h);
+      return;
+    }
     if (ev.kind === KIND_HEART) {
       let d; try { d = JSON.parse(ev.content); } catch { return; }
       if (!d || typeof d.id !== 'string' || d.id.length > 80 || typeof d.h !== 'string' || this.hearts.has(d.h)) return;
       this.hearts.add(d.h);
-      this.hooks.onHeart(d.id, d.h);
+      if (ev.created_at < this.joinedAt - 2) this.hooks.onAwayHeart && this.hooks.onAwayHeart(d.id, d.h);   // while we were away
+      else this.hooks.onHeart(d.id, d.h);
       return;
     }
     if (ev.kind !== KIND_LANTERN) return;
@@ -126,6 +136,14 @@ export class Board {
   async heart(netId, h) {
     if (!this.lake) return;
     this.hearts.add(h);
-    try { this.publish(await this.sign(KIND_HEART, [['t', TAG(this.lake)]], JSON.stringify({ id: netId, h }))); } catch {}
+    const owner = netId.includes(':') ? netId.split(':')[0] : null;
+    const tags = [['t', TAG(this.lake)], ['expiration', String(now() + HEART_TTL)]];
+    if (owner) tags.push(['w', owner]);
+    try { this.publish(await this.sign(KIND_HEART, tags, JSON.stringify({ id: netId, h }))); } catch {}
+  }
+
+  async wish(slot, h) {
+    if (!this.lake) return;
+    try { this.publish(await this.sign(KIND_WISH, [['t', TAG(this.lake)]], JSON.stringify({ s: slot, h }))); } catch {}
   }
 }
