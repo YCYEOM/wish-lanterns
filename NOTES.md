@@ -196,3 +196,8 @@ https://ycyeom.github.io/wish-lanterns/
   ignores the first seconds (shader warm-up). Desktop max ratio 1.5. `window.__fixedRes = true` (or `?fixed` in
   .studio/prof.mjs) turns it off for measurement / the reel recorder.
 - Mac proof (.studio/prof.mjs, prof-hi.mjs): 1080p p95 26.7 → 14.2 ms; 4K-class fixed 30 fps → adaptive 60 fps at 2720x1530.
+- Windows follow-up (Edge smooth, Chrome stuttering on the same PC, CPU/RAM calm → a Chrome GPU setting):
+  frames capped at 60 (120-165 Hz screens drew 2-3× as often), no backdrop-filter (blur over the live canvas is
+  recomposited every frame), desktop pixel ratio max 1.25, and a software GPU (SwiftShader / Basic Render) starts at
+  0.6 resolution with a toast on how to turn Chrome's graphics acceleration on. `__studio.gpu()` reports GPU,
+  draw calls, resolution. Proof: `.studio/gpusw.mjs` (SwiftShader → res 0.6 + toast).

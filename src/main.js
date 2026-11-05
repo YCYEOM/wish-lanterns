@@ -46,16 +46,20 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 // (a Windows laptop's integrated graphics at 125-150 % scaling) renders fewer pixels instead of stuttering.
 // Starts at the screen's ratio (max 2, desktop max 1.5), steps down while frames miss the screen's refresh,
 // back up after a few smooth seconds.
-const RES_MAX = Math.min(window.devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 2 : 1.5);
+const RES_MAX = Math.min(window.devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 2 : 1.25);
 const RES_MIN = Math.min(RES_MAX, 0.6);
-let resScale = RES_MAX, resT = 0, resN = 0, resSlow = 0, resGood = 0, vsync = 1 / 60;
+// which GPU the browser gave us: a software renderer (graphics acceleration off, a blocked driver) cannot run this
+// scene smoothly at any size, so start small and say how to turn acceleration back on
+const GPU_NAME = (() => { try { const gl = renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); return String(e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)); } catch { return ''; } })();
+const SOFTWARE_GPU = /swiftshader|llvmpipe|software|basic render|microsoft basic/i.test(GPU_NAME);
+let resScale = SOFTWARE_GPU ? Math.min(RES_MAX, 0.6) : RES_MAX, resT = 0, resN = 0, resSlow = 0, resGood = 0, vsync = 1 / 60;
 let resCeil = RES_MAX, resWarm = 2, resLastUp = false;
 renderer.setPixelRatio(resScale);
 // judged by missed refreshes, not the average: a frame that takes two refreshes is the visible hitch
 function adaptRes(dt) {
   if (window.__fixedRes || document.hidden || dt <= 0 || dt > 0.25) return;
   vsync = Math.min(vsync * 1.002, Math.max(1 / 240, dt));      // the screen's refresh: the shortest interval seen
-  resT += dt; resN++; if (dt > vsync * 1.5) resSlow++;
+  resT += dt; resN++; if (dt > Math.max(vsync, 1 / 60) * 1.7) resSlow++;   // frames are capped at 60 (frame())
   if (resT < 1.2) return;                                         // judge over about a second
   const slow = resSlow / resN; resT = 0; resN = 0; resSlow = 0;
   if (resWarm > 0) { resWarm--; return; }                         // loading hitches are not the steady state
@@ -1066,6 +1070,7 @@ function startGame() {
   $('hud').classList.remove('hidden');
   updateStats();
   net.start();
+  if (SOFTWARE_GPU) setTimeout(() => toast('⚠️ 브라우저의 그래픽 가속이 꺼져 있어 화면이 끊길 수 있어요 · 크롬 설정 → 시스템 → "가능한 경우 그래픽 가속 사용"을 켜 주세요', 9000), 2500);
   const inv = invitedLake();
   if (inv) setTimeout(() => toast(`초대받은 호수 ${inv}에 들어왔어요`, 3500), 1400);
   noticeWeather();
@@ -1403,7 +1408,12 @@ window.addEventListener('keydown', (e) => {
 // ---------------------------------------------------------------- loop + studio hooks
 let running = true;
 let last = performance.now();
+// at most 60 frames a second: a 120-165 Hz screen would otherwise have the GPU draw this whole scene two or three
+// times as often, flat out, slowing the rest of the computer with it
+let nextDraw = 0;
 function frame(now) {
+  if (now < nextDraw - 2 && !window.__fixedRes) { requestAnimationFrame(frame); return; }
+  nextDraw = Math.max(nextDraw + 1000 / 60, now);
   adaptRes((now - last) / 1000);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (frozen) { requestAnimationFrame(frame); return; }
@@ -1529,6 +1539,7 @@ window.__studio.advance = (ms) => { for (let i = 0, n = Math.round(ms / (1000 / 
 window.__studio.fakeArrival = (mode = 'sky', text = 'test', color = 'amber', who = 'tester') => { net.hooks.onLantern({ netId: 'x:' + Date.now(), text, color, mode }, who, true); return lanterns[lanterns.length - 1].id; };
 window.__studio.place = (id, x, z, hearts, color = 'amber', mode = 'water') => { makeLantern({ id, text: 'demo', color, mode, x, y: mode === 'sky' ? 3 : 0, z, hearts }); return id; };
 window.__studio.loveInfo = (id) => { const L = lanterns.find(l => l.id === id); return L && { hearts: L.hearts, love: +L.love.toFixed(2), halo: L.halo && { op: +L.halo.material.opacity.toFixed(2), sc: +L.halo.scale.x.toFixed(2), vis: L.halo.visible }, glow: +L.glow.material.opacity.toFixed(2), glowSc: +L.glow.scale.x.toFixed(2), motes: !!L.motes, alpha: L.alpha }; };
+window.__studio.gpu = () => { if (0) return { GPU_NAME, SOFTWARE_GPU }; const gl = renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info'); return { renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, points: renderer.info.render.points, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs.length, res: resScale, canvas: canvas.width + 'x' + canvas.height }; };
 window.__studio.openId = (id) => { const L = lanterns.find(l => l.id === id); if (L) openCard(L); return !!L; };
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];
