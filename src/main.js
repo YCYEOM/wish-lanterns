@@ -1,6 +1,6 @@
 import * as THREE from '../vendor/three.module.js';
 import { COLORS, PRESETS, WARM_MESSAGES, cleanMessage, topicToday } from './data.js';
-import { Audio } from './audio.js';
+import { Audio, MUSIC_DEFAULTS } from './audio.js';
 import { Net, invitedLake } from './net.js';
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
@@ -27,8 +27,9 @@ function loadSave() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
     return { launched: s.launched | 0, hearts: s.hearts | 0, received: s.received | 0, wishes: s.wishes | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [],
-      log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false };
-  } catch { return { launched: 0, hearts: 0, received: 0, wishes: 0, hidden: [], hearted: [], mine: [], log: [], heartsBy: {}, lastVisit: 0, music: true }; }
+      log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false,
+      musicCfg: { ...MUSIC_DEFAULTS, ...(s.musicCfg && typeof s.musicCfg === 'object' ? s.musicCfg : {}) } };
+  } catch { return { launched: 0, hearts: 0, received: 0, wishes: 0, hidden: [], hearted: [], mine: [], log: [], heartsBy: {}, lastVisit: 0, music: true, musicCfg: { ...MUSIC_DEFAULTS } }; }
 }
 let save = loadSave();
 if (!save.log.length && save.mine.length) save.log = save.mine.map(m => ({ id: m.id, text: m.text, color: m.color, mode: m.mode, at: 0, lake: 0 }));
@@ -997,7 +998,7 @@ document.querySelectorAll('.mode').forEach(b => b.onclick = () => {
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => closePanel(b.dataset.close));
 
 function openCompose() {
-  closeCard();
+  closeCard(); closePanel('music');
   $('topic').textContent = `💭 오늘의 주제 · ${topicToday()}`;
   $('toast').classList.add('hidden');   // the weather / arrival line never sits over the panel
   $('compose').classList.remove('hidden');
@@ -1006,6 +1007,7 @@ function openCompose() {
   setTimeout(() => $('msg').focus(), 50);
 }
 function closePanel(which) {
+  if (which === 'music') { $('musicPanel').classList.add('hidden'); if (screen === 'music') screen = 'lake'; return; }
   if (which === 'diary') { $('diary').classList.add('hidden'); if (screen === 'diary') screen = 'lake'; return; }
   if (which === 'compose') { $('compose').classList.add('hidden'); $('launchBtn').classList.remove('hidden'); $('tip').classList.remove('hidden'); screen = 'lake'; }
   else closeCard();
@@ -1119,14 +1121,60 @@ $('invite').onclick = async () => {
 };
 // today's topic: tapping it puts it in the line as a start
 $('topic').onclick = () => { const m = $('msg'); if (!m.value.trim()) { m.value = topicToday() + ' '; onMsgInput(); } m.focus(); audio.tick(); };
-// background music, remembered between visits
-function syncMusic() { $('music').classList.toggle('off', !save.music); $('music').title = save.music ? '배경음악 끄기' : '배경음악 켜기'; }
-audio.musicOn = save.music; syncMusic();
-$('music').onclick = () => { audio.start(); save.music = !save.music; persist(); audio.setMusic(save.music); syncMusic(); audio.tick(); };
+// background music, remembered between visits: 🎵 opens a small panel with an on/off switch, a mood and sliders
+const SLIDERS = [
+  { id: 'vol', label: '음악 크기', min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
+  { id: 'tempo', label: '빠르기', min: 0, max: 1, step: 0.01, show: (v) => (v < 0.34 ? '느리게' : v < 0.67 ? '보통' : '빠르게') },
+  { id: 'notes', label: '오르골 음', min: 0, max: 1, step: 0.01, show: (v) => (v < 0.08 ? '없음' : v < 0.34 ? '드문드문' : v < 0.67 ? '보통' : '많이') },
+  { id: 'key', label: '음 높이', min: -5, max: 7, step: 1, show: (v) => (v > 0 ? `+${v}` : `${v}`) },
+  { id: 'rev', label: '울림', min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
+  { id: 'nature', label: '물·풀벌레 소리', min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
+];
+for (const sd of SLIDERS) {
+  const row = document.createElement('label'); row.className = 'mp-row';
+  row.innerHTML = `<span class="mp-name">${sd.label}</span><input type="range" min="${sd.min}" max="${sd.max}" step="${sd.step}" data-k="${sd.id}"><span class="mp-val"></span>`;
+  $('sliders').appendChild(row);
+}
+function syncMusic() {
+  const c = save.musicCfg;
+  $('music').classList.toggle('off', !save.music); $('music').title = '배경음악 설정';
+  $('musicOn').classList.toggle('on', save.music); $('musicOn').setAttribute('aria-checked', String(save.music));
+  $('musicPanel').classList.toggle('muted', !save.music);
+  document.querySelectorAll('.mood').forEach((b) => b.classList.toggle('on', b.dataset.mood === c.mood));
+  document.querySelectorAll('#sliders input').forEach((inp) => {
+    const sd = SLIDERS.find((x) => x.id === inp.dataset.k), v = c[sd.id];
+    if (document.activeElement !== inp) inp.value = v;
+    inp.style.setProperty('--p', `${((v - sd.min) / (sd.max - sd.min)) * 100}%`);
+    inp.nextElementSibling.textContent = sd.show(v);
+  });
+}
+let musicSaveT = 0;
+function setMusicCfg(part) {
+  Object.assign(save.musicCfg, part); audio.setMusicCfg(part); syncMusic();
+  clearTimeout(musicSaveT); musicSaveT = setTimeout(persist, 300);
+}
+audio.musicOn = save.music; audio.setMusicCfg(save.musicCfg); syncMusic();
+function openMusic() {
+  closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary');
+  $('toast').classList.add('hidden'); $('musicPanel').classList.remove('hidden'); screen = 'music'; syncMusic();
+}
+$('music').onclick = () => { audio.start(); if (screen === 'music') closePanel('music'); else { openMusic(); audio.tick(); } };
+$('musicOn').onclick = () => {
+  audio.start(); save.music = !save.music; persist(); audio.setMusic(save.music); syncMusic(); audio.tick();
+  if (save.music && audio.muted) $('mute').click();          // turning music on should be heard
+};
+document.querySelectorAll('.mood').forEach((b) => b.onclick = () => {
+  audio.start(); setMusicCfg({ mood: b.dataset.mood });
+  if (!save.music) $('musicOn').click(); else audio.tick();
+});
+document.querySelectorAll('#sliders input').forEach((inp) => inp.addEventListener('input', () => {
+  audio.start(); setMusicCfg({ [inp.dataset.k]: +inp.value });
+}));
+$('musicReset').onclick = () => { setMusicCfg({ ...MUSIC_DEFAULTS }); audio.tick(); };
 // the lantern diary: what you launched, the hearts each got, and your totals
 function dateKST(ms) { const d = new Date(ms + 9 * 3600 * 1000); return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`; }
 function openDiary() {
-  closeCard(); if (screen === 'compose') closePanel('compose');
+  closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'music') closePanel('music');
   const c = COLORS;
   $('diarySum').innerHTML = `<span>띄운 등불 <b>${save.launched}</b></span><span>받은 반짝임 <b>${save.received}</b></span><span>보낸 반짝임 <b>${save.hearts}</b></span><span>별똥별 소원 <b>${save.wishes}</b></span>`;
   const list = $('diaryList'); list.textContent = '';
@@ -1189,6 +1237,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (screen === 'title') { startGame(); return; }
   if (screen === 'compose') { closePanel('compose'); return; }
   if (screen === 'diary') { closePanel('diary'); return; }
+  if (screen === 'music') { closePanel('music'); return; }
   if (press) return;                                   // a second finger: ignore
   press = { id: e.pointerId, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, drag: false };
   try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -1250,7 +1299,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary'); }
+  if (e.key === 'Escape') { closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary'); if (screen === 'music') closePanel('music'); }
   else if ((e.key === 'Enter' || e.key === ' ') && screen === 'title') startGame();
 });
 
@@ -1362,6 +1411,7 @@ window.__studio.weather = (kind, instant) => { forcedWeather = WEATHER_KINDS.inc
 window.__studio.season = (name, instant) => { forcedSeason = SEASON_NAMES.includes(name) ? name : null; applyAtmos(!!instant); return atmos.state(); };
 window.__studio.moon = (p) => { if (typeof p === 'number') uniforms.moonPhase.value = p; else uniforms.moonPhase.value = moonPhaseNow(); return { phase: +uniforms.moonPhase.value.toFixed(3), name: moonName(uniforms.moonPhase.value) }; };
 window.__studio.atmos = () => ({ ...atmos.state(), seoul: { ...seoul }, line: weatherLine() });
+window.__studio.music = () => ({ on: audio.musicOn, cfg: { ...audio.cfg }, bar: audio.bar | 0, gain: audio.musicGain ? +audio.musicGain.gain.value.toFixed(3) : null, nature: audio.nature ? +audio.nature.gain.value.toFixed(3) : null, echo: audio.echoWet ? +audio.echoWet.gain.value.toFixed(3) : null });
 window.__studio.view = () => ({ ...walker.view, dir: walker.viewDir(), st: walker.state() });
 window.__studio.swatch = () => { COLORS.forEach((c, i) => { makeLantern({ id: 'sw' + i, color: c.id, mode: 'water', x: (i - 2) * 2.2, y: 0, z: 4 }); makeLantern({ id: 'sv' + i, color: c.id, mode: 'sky', x: (i - 2) * 2.2, y: 4.5, z: 2 }); });
   lanterns.filter(l => /^s[wv]/.test(l.id)).forEach(l => { l.vx = l.vz = l.vy = 0; l.speed = 0; }); return true; };

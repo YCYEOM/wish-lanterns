@@ -67,6 +67,22 @@
     <div id="diaryList" class="diary-list"></div>
   </div>
 
+  <div id="musicPanel" class="music-panel hidden">
+    <div class="mp-head">
+      <h2>배경음악</h2>
+      <button id="musicOn" class="mp-toggle on" role="switch" aria-checked="true"><span class="knob"></span></button>
+      <button class="close" data-close="music">✕</button>
+    </div>
+    <div class="mp-moods" id="moods">
+      <button class="chip mood" data-mood="calm">🌙 잔잔</button>
+      <button class="chip mood" data-mood="warm">🕯️ 따뜻</button>
+      <button class="chip mood" data-mood="dreamy">🫧 몽환</button>
+      <button class="chip mood" data-mood="starry">✨ 별빛</button>
+    </div>
+    <div id="sliders"></div>
+    <button id="musicReset" class="ghost-btn mp-reset">기본값으로</button>
+  </div>
+
   <div id="toast" class="hidden"></div>
   <div id="netline"></div>
 </div>

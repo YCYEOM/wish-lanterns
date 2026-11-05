@@ -149,3 +149,12 @@ https://ycyeom.github.io/wish-lanterns/
   on by default, remembered in `save.music`.
 - Phones: on screens <= 520 px wide the stats pill moves under the four round buttons; on very short screens the
   compose panel drops its sub-labels so 띄우기 stays on screen.
+
+## Music settings panel
+- 🎵 now opens a small panel under the round buttons (the lake stays in view): an on/off switch, four moods
+  (calm Am-F-C-G, warm C-G-Am-F, dreamy maj7 chords, starry D major — each with its own pentatonic-ish scale),
+  and sliders: volume, tempo (6.8 s .. 2.8 s a bar), music-box notes per bar (0..~7), key (-5..+7 semitones),
+  echo (feedback delay through a lowpass), and the water/cricket level (its own `nature` bus), plus "기본값으로".
+- Levels change at once; tempo/notes/key/mood from the next bar. Settings persist in `save.musicCfg`
+  (defaults `MUSIC_DEFAULTS` in audio.js). Turning music on while muted also unmutes.
+- Test: `.studio/musicp.mjs` (desktop, phone portrait, phone landscape: open, mood, drag sliders, off, reload keeps them).

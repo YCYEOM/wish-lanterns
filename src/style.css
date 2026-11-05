@@ -170,3 +170,34 @@ body.hud-off #netline { display: none; }
   #stats { top: 62px; left: 12px; max-width: calc(100vw - 24px); }
   .wish-btn { top: 104px; }
 }
+
+/* music settings: a small panel under the round buttons, so the lake stays in view while you listen */
+.music-panel { position: absolute; z-index: 5; top: 60px; right: 12px; width: min(320px, calc(100vw - 24px)); padding: 14px 16px 14px;
+  border-radius: 18px; background: rgba(14,18,44,.86); border: 1px solid rgba(255,210,160,.22); backdrop-filter: blur(10px);
+  box-shadow: 0 10px 40px rgba(0,0,0,.45); max-height: calc(100dvh - 72px); overflow-y: auto; overscroll-behavior: contain;
+  animation: mpIn .25s ease-out; }
+@keyframes mpIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.mp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding-right: 24px; }
+.mp-head h2 { font-size: 16px; color: #ffe2bc; margin: 0; flex: 1; }
+.mp-head .close { top: 12px; right: 12px; }
+.mp-toggle { position: relative; width: 44px; height: 24px; border-radius: 12px; border: 1px solid rgba(255,210,160,.3);
+  background: rgba(255,255,255,.12); cursor: pointer; transition: background .2s; }
+.mp-toggle .knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #d8c3a8; transition: transform .2s, background .2s; }
+.mp-toggle.on { background: rgba(255,160,80,.75); }
+.mp-toggle.on .knob { transform: translateX(20px); background: #fff8ee; }
+.mp-moods { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chip.mood.on { background: rgba(255,170,90,.38); border-color: rgba(255,210,160,.75); color: #fff8ee; }
+.mp-row { display: grid; grid-template-columns: 92px 1fr 46px; align-items: center; gap: 8px; padding: 5px 0; font-size: 12.5px; color: #e8cfae; }
+.mp-val { text-align: right; color: #ffe2bc; font-size: 12px; white-space: nowrap; }
+.mp-row input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 22px; background: transparent; cursor: pointer; touch-action: none; }
+.mp-row input[type=range]::-webkit-slider-runnable-track { height: 5px; border-radius: 3px;
+  background: linear-gradient(90deg, rgba(255,170,90,.9) var(--p, 50%), rgba(255,255,255,.15) var(--p, 50%)); }
+.mp-row input[type=range]::-moz-range-track { height: 5px; border-radius: 3px;
+  background: linear-gradient(90deg, rgba(255,170,90,.9) var(--p, 50%), rgba(255,255,255,.15) var(--p, 50%)); }
+.mp-row input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -6.5px; border-radius: 50%;
+  background: #fff3df; box-shadow: 0 0 10px rgba(255,190,120,.8); border: none; }
+.mp-row input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #fff3df; box-shadow: 0 0 10px rgba(255,190,120,.8); border: none; }
+.music-panel.muted .mp-moods, .music-panel.muted #sliders .mp-row:not(:last-child) { opacity: .5; }
+.mp-reset { margin-top: 8px; width: 100%; }
+@media (max-width: 520px) { .music-panel { top: 56px; } .mp-row { grid-template-columns: 84px 1fr 44px; } }
+@media (max-height: 520px) { .music-panel { top: 56px; padding: 10px 14px; } .mp-row { padding: 2px 0; } .mp-head { margin-bottom: 6px; } }
