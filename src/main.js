@@ -1441,7 +1441,8 @@ window.__studio.dbg = () => { const L = lanterns[lanterns.length - 1]; const h =
 let frozen = false;
 window.__studio.freeze = (on = true) => { frozen = on; };
 window.__studio.advance = (ms) => { for (let i = 0, n = Math.round(ms / (1000 / 60)); i < n; i++) { update(1 / 60); render(1 / 60); } };
-window.__studio.fakeArrival = (mode = 'sky') => { net.hooks.onLantern({ netId: 'x:' + Date.now(), text: 'test', color: 'amber', mode }, 'tester', true); return lanterns[lanterns.length - 1].id; };
+window.__studio.fakeArrival = (mode = 'sky', text = 'test', color = 'amber', who = 'tester') => { net.hooks.onLantern({ netId: 'x:' + Date.now(), text, color, mode }, who, true); return lanterns[lanterns.length - 1].id; };
+window.__studio.openId = (id) => { const L = lanterns.find(l => l.id === id); if (L) openCard(L); return !!L; };
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];
 
