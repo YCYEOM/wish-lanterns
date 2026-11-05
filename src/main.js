@@ -2,6 +2,8 @@ import * as THREE from '../vendor/three.module.js';
 import { COLORS, PRESETS, WARM_MESSAGES, cleanMessage, topicToday } from './data.js';
 import { Audio, MUSIC_DEFAULTS } from './audio.js';
 import { Net, invitedLake } from './net.js';
+import { ServerNet } from './servernet.js';
+import { serverUrl } from './config.js';
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
 import * as shore from './shore.js';
@@ -827,7 +829,7 @@ function updateStats() {
 let netSeed = 99991;
 const nrnd = () => { netSeed = (netSeed * 1664525 + 1013904223) >>> 0; return netSeed / 4294967296; };
 let lastArrivalToast = 0;
-const net = new Net({
+const netHooks = {
   onLantern(e, who, fresh, peerId) {
     if (save.hidden.includes(e.netId) || lanterns.some(l => l.id === e.netId)) return;
     const text = cleanMessage(e.text);
@@ -907,7 +909,16 @@ const net = new Net({
   onWish(slot, h) { otherWish(slot, h); },
   onLeave(id) { const r = others.get(id); if (r) { r.w.dispose(); others.delete(id); } },
   onStatus(msg) { toast(msg, 4000); },
-});
+  onAwayHeart(netId, h) { awayHeart(netId, h); },
+  // our server could not be reached: carry on serverless (direct P2P + public relays), as before it existed
+  onFallback() {
+    if (!(net instanceof ServerNet)) return;
+    net = new Net(netHooks); net.setMine(save.mine); loadBoard(); net.start();
+  },
+};
+// with a server configured (config.js) the lake goes through it; otherwise serverless P2P + relays
+const SERVER = serverUrl();
+let net = SERVER ? new ServerNet(netHooks, SERVER) : new Net(netHooks);
 net.setMine(save.mine);
 // the lake's memory (board.js): lanterns stay a day on public relays, so an empty lake is never empty
 const heartSeen = new Set();
@@ -939,7 +950,7 @@ function awayHeart(netId, h) {
     show();
   }, 3000);
 }
-import('./board.js').then(({ Board }) => {
+function loadBoard() { import('./board.js').then(({ Board }) => {
   board = new Board({
     // with people connected directly, give their own message a moment to arrive first (it knows who launched it)
     onLantern(e, fresh) { if (fresh && net.peers > 0) setTimeout(() => net.hooks.onLantern(e, '', fresh), 2500); else net.hooks.onLantern(e, '', fresh); },
@@ -948,7 +959,8 @@ import('./board.js').then(({ Board }) => {
     onAwayHeart(netId, h) { awayHeart(netId, h); },
   });
   if (lakeNo) joinBoard(lakeNo);
-}).catch(() => {});
+}).catch(() => {}); }
+if (net instanceof ServerNet) { net.since = visitSince; net.scarf = myScarf; } else loadBoard();
 // the connection line at the bottom is for debugging only: shown with ?debug in the address
 const SHOW_NETLINE = /[?&]debug\b/.test(location.search);
 if (!SHOW_NETLINE) $('netline').style.display = 'none';
@@ -1056,6 +1068,7 @@ function sendLantern() {
   save.launched++;
   persist(); updateStats(); net.setMine(save.mine);
   board.post(net.myKey, { k: id, t: text, c: composeColor, m: composeMode });
+  if (net.post) net.post({ k: id, t: text, c: composeColor, m: composeMode });
   net.sendPos(walker.pos.x, walker.pos.z, composeMode, myScarf);   // the others see us kneel or lift it
   $('compose').classList.add('hidden'); screen = 'lake';   // the button and tip come back when the pose ends
   $('launchBtn').classList.add('hidden'); $('tip').classList.add('hidden'); closeCard();

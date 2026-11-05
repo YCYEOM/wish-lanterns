@@ -158,3 +158,18 @@ https://ycyeom.github.io/wish-lanterns/
 - Levels change at once; tempo/notes/key/mood from the next bar. Settings persist in `save.musicCfg`
   (defaults `MUSIC_DEFAULTS` in audio.js). Turning music on while muted also unmutes.
 - Test: `.studio/musicp.mjs` (desktop, phone portrait, phone landscape: open, mood, drag sliders, off, reload keeps them).
+
+## Own server (free Cloudflare plan) — built, not yet deployed
+- `server/`: one Cloudflare Worker serves `dist/` (static assets, free and unmetered) and `/ws`.
+  Each lake is a Durable Object (SQLite, WebSocket hibernation, free plan): relays walker positions,
+  lanterns, hearts and star wishes; keeps lanterns 24 h and hearts 7 days (away hearts on the next visit);
+  cleans text with `cleanMessage` from src/data.js; rate limits (lantern 1 / 4 s, hearts 30 / min, wish 1 / 3 s);
+  lake cap 10 for auto-join (a full lake answers `{t:'full'}` and the client tries the next).
+  `POST /admin/delete?lake=N&o=&k=` with `Authorization: Bearer $ADMIN_TOKEN` (wrangler secret) removes a lantern.
+- Client: `src/servernet.js` (`ServerNet`, same face as `Net`), chosen when `src/config.js` has a server URL
+  (or `?server=`). If it cannot connect within 5 s, `onFallback` switches to P2P + relays (net.js + board.js), so
+  the free quota running out never breaks the game. Protocol: lantern text is `tx` (`t` is the message type).
+- Deploy: `cd server && npx wrangler login && npm run deploy`, then put the workers.dev URL in
+  `DEFAULT_SERVER` (config.js) and push, so the GitHub Pages copy uses the server too.
+- Tests: `.studio/server.mjs` (needs `cd server && npm run dev`): 2 walkers, kneel, lantern, leave, heart while
+  away, latecomer finds the lantern, away-heart toast, 11th socket sent on. `.studio/fallback.mjs`: dead server → P2P.

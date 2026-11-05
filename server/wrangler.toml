@@ -1,0 +1,19 @@
+# One free Cloudflare Worker serves the game (static files from ../dist) and the shared lakes:
+# each lake is a Durable Object (SQLite storage, WebSocket hibernation) that relays walkers, lanterns,
+# hearts and shooting-star wishes, and remembers a day of lanterns and a week of hearts.
+name = "wish-lanterns"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "../dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/ws", "/health", "/admin/*"]
+
+[[durable_objects.bindings]]
+name = "LAKE"
+class_name = "Lake"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Lake"]

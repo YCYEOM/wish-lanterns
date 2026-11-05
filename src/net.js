@@ -20,7 +20,7 @@ export function invitedLake() {
   } catch { return null; }
 }
 
-function ownerKey() { // stable per browser, so a reload does not duplicate your lanterns for others
+export function ownerKey() { // stable per browser, so a reload does not duplicate your lanterns for others
   try {
     let k = localStorage.getItem('wishLanterns.owner');
     if (!k) { const a = new Uint32Array(2); crypto.getRandomValues(a); k = 'o' + a[0].toString(36) + a[1].toString(36); localStorage.setItem('wishLanterns.owner', k); }

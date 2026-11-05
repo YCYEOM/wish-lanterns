@@ -1,0 +1,12 @@
+{
+  "name": "wish-lanterns-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "cd .. && npm run build && cd server && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

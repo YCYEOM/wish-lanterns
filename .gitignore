@@ -7,3 +7,6 @@ dist/
 output/
 .env
 .playwright-cli/
+server/node_modules
+server/.wrangler
+.wrangler
