@@ -1,7 +1,7 @@
 // Where the shared-lake server lives (server/, a Cloudflare Worker). Empty: no server, the lake uses
 // serverless P2P (net.js) and public relays (board.js) as before.
 // ?server=<url> overrides it (local testing: ?server=http://localhost:8787); ?p2p forces the serverless path.
-const DEFAULT_SERVER = '';
+const DEFAULT_SERVER = 'https://wish-lanterns.ycyeom.workers.dev';
 
 export function serverUrl() {
   try {

@@ -159,7 +159,7 @@ https://ycyeom.github.io/wish-lanterns/
   (defaults `MUSIC_DEFAULTS` in audio.js). Turning music on while muted also unmutes.
 - Test: `.studio/musicp.mjs` (desktop, phone portrait, phone landscape: open, mood, drag sliders, off, reload keeps them).
 
-## Own server (free Cloudflare plan) — built, not yet deployed
+## Own server (free Cloudflare plan) — live at https://wish-lanterns.ycyeom.workers.dev
 - `server/`: one Cloudflare Worker serves `dist/` (static assets, free and unmetered) and `/ws`.
   Each lake is a Durable Object (SQLite, WebSocket hibernation, free plan): relays walker positions,
   lanterns, hearts and star wishes; keeps lanterns 24 h and hearts 7 days (away hearts on the next visit);
