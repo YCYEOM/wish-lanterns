@@ -213,3 +213,12 @@ https://ycyeom.github.io/wish-lanterns/
 - Sync: one-shots as `{t:'e',k}` (server, 0.7 s rate limit; P2P action 'emote'); sitting rides on positions (`sit`),
   sent at once when it changes, kept by the server so a newcomer sees who is sitting. `.studio/emote.mjs` (2-3
   clients on the local server), `.studio/emote1.mjs` (poses from the front).
+
+## Choosing a lake
+- Tap the lake line (top left, `#stats` is now a button ▾): a 5×6 grid of lakes 1-30 with people in each
+  (lit = someone there, "가득" at the cap, "여기" = yours); tapping one moves there (full ones too, like an invite)
+  and writes ?lake=N into the address so a reload stays. `net.switchLake(n)`, `net.lakeCounts()` (P2P: no counts).
+- Server: a `Lobby` Durable Object (migration v2) keeps each lake's head count; lakes report on every arrival and
+  departure (+2 requests per visit). `GET /lakes` → `{lakes:[...30], cap}`, `GET /online` → `{online}` (for
+  listings like metatrip), both cached 10 s at the edge so asking often never wakes the lakes.
+  Test: `.studio/lakes2.mjs` (local server; S=<url> for the live one).

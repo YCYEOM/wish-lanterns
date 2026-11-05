@@ -921,6 +921,7 @@ function updateStats() {
   const people = lakeNo ? `🌙 호수 ${lakeNo}${online > 1 ? ` · 지금 ${online}명` : ''} · ` : (online > 1 ? `🌙 지금 호수에 ${online}명 · ` : '');
   const got = (save.received ? ` · 받은 반짝임 ${save.received}` : '') + (save.wishes ? ` · 별똥별 소원 ${save.wishes}` : '');
   $('stats').textContent = `${people}띄운 등불 ${save.launched} · 보낸 반짝임 ${save.hearts}${got}`;
+  if (lakeNo) $('stats').insertAdjacentHTML('beforeend', ' <span class="lake-caret">▾</span>');
 }
 
 // ---------------------------------------------------------------- multiplayer
@@ -1119,6 +1120,7 @@ function openCompose() {
   setTimeout(() => $('msg').focus(), 50);
 }
 function closePanel(which) {
+  if (which === 'lakes') { $('lakePanel').classList.add('hidden'); if (screen === 'lakes') screen = 'lake'; return; }
   if (which === 'music') { $('musicPanel').classList.add('hidden'); if (screen === 'music') screen = 'lake'; return; }
   if (which === 'diary') { $('diary').classList.add('hidden'); if (screen === 'diary') screen = 'lake'; return; }
   if (which === 'compose') { $('compose').classList.add('hidden'); $('launchBtn').classList.remove('hidden'); $('tip').classList.remove('hidden'); screen = 'lake'; }
@@ -1235,6 +1237,44 @@ $('invite').onclick = async () => {
 };
 // today's topic: tapping it puts it in the line as a start
 $('topic').onclick = () => { const m = $('msg'); if (!m.value.trim()) { m.value = topicToday() + ' '; onMsgInput(); } m.focus(); audio.tick(); };
+// choosing a lake: tap the lake line (top left) for all 30 with how many people are in each; full ones can
+// still be chosen (like an invite)
+const LAKE_TOTAL = 30;
+async function openLakes() {
+  if (screen === 'compose' || screen === 'diary' || screen === 'music') return;
+  closeCard(); $('toast').classList.add('hidden');
+  $('lakePanel').classList.remove('hidden'); screen = 'lakes';
+  drawLakes(null); audio.tick();
+  const d = await net.lakeCounts();
+  if (screen === 'lakes') drawLakes(d);
+}
+function drawLakes(d) {
+  const g = $('lakeGrid'); g.textContent = '';
+  const cap = (d && d.cap) || 10;
+  $('lakeSub').textContent = d ? '사람이 있는 호수는 불이 켜져 있어요 · 눌러서 가 보세요' : (net instanceof ServerNet ? '사람 수를 불러오는 중…' : '가고 싶은 호수를 눌러 보세요');
+  for (let n = 1; n <= LAKE_TOTAL; n++) {
+    const c = d ? (d.lakes[n - 1] | 0) : null;
+    const b = document.createElement('button'); b.className = 'lake-cell';
+    if (n === lakeNo) b.classList.add('here');
+    if (c) b.classList.add('lit');
+    if (c !== null && c >= cap) b.classList.add('full');
+    b.innerHTML = `<b>${n}</b><span>${n === lakeNo ? '여기' : c === null ? '' : c >= cap ? `가득 ${c}` : c ? `${c}명` : '조용'}</span>`;
+    b.onclick = () => goLake(n);
+    g.appendChild(b);
+  }
+}
+async function goLake(n) {
+  closePanel('lakes');
+  if (n === lakeNo) return;
+  audio.chime([523.25, 659.25], 0.1);
+  toast(`호수 ${n}(으)로 가는 중…`, 2500);
+  const ok = await net.switchLake(n);
+  if (ok) {
+    try { const u = new URL(location.href); u.searchParams.set('lake', String(n)); history.replaceState(null, '', u); } catch {}
+    toast(`🌙 호수 ${n}에 왔어요`, 2600);
+  } else toast('지금은 그 호수로 갈 수 없어요 · 잠시 뒤 다시 해 보세요', 3200);
+}
+$('stats').onclick = (e) => { e.stopPropagation(); audio.start(); if (screen === 'lakes') closePanel('lakes'); else openLakes(); };
 // little actions: 👋 wave, 🙇 bow, 🎉 jump, 💕 heart, 🪑 sit (also keys 1-5); others on the lake see them too
 const EMOTE_KEYS = ['wave', 'bow', 'jump', 'heart', 'sit'];
 function doEmote(k) {
@@ -1364,6 +1404,7 @@ canvas.addEventListener('pointerdown', (e) => {
   $('emoteBar').classList.add('hidden');
   if (screen === 'diary') { closePanel('diary'); return; }
   if (screen === 'music') { closePanel('music'); return; }
+  if (screen === 'lakes') { closePanel('lakes'); return; }
   if (press) return;                                   // a second finger: ignore
   press = { id: e.pointerId, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, drag: false };
   try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -1426,7 +1467,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary'); if (screen === 'music') closePanel('music'); }
+  if (e.key === 'Escape') { closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary'); if (screen === 'music') closePanel('music'); if (screen === 'lakes') closePanel('lakes'); }
   else if ((e.key === 'Enter' || e.key === ' ') && screen === 'title') startGame();
 });
 

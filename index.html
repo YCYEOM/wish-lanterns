@@ -33,7 +33,12 @@
   </div>
 
   <div id="hud" class="hidden">
-    <div id="stats"></div>
+    <button id="stats" title="다른 호수로 가기"></button>
+    <div id="lakePanel" class="lake-panel hidden">
+      <div class="mp-head"><h2>호수 고르기</h2><button class="close" data-close="lakes">✕</button></div>
+      <div class="lake-sub" id="lakeSub">가고 싶은 호수를 눌러 보세요</div>
+      <div class="lake-grid" id="lakeGrid"></div>
+    </div>
     <button id="invite" class="icon-btn invite" title="친구 초대 링크 복사">🔗</button>
     <button id="mute" class="icon-btn" title="소리">🔊</button>
     <button id="music" class="icon-btn music" title="배경음악">🎵</button>

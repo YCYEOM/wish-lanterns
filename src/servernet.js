@@ -143,6 +143,25 @@ export class ServerNet {
     this.send({ t: 'p', x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: this.scarf, sit: sit ? 1 : 0 });
   }
 
+  // the head count of every lake, for the lake chooser (null if the server cannot say)
+  async lakeCounts() {
+    try {
+      const u = new URL(this.url); u.protocol = u.protocol === 'ws:' ? 'http:' : 'https:'; u.pathname = '/lakes';
+      const r = await fetch(u.toString(), { cache: 'no-store' }); if (!r.ok) return null;
+      const d = await r.json(); return Array.isArray(d.lakes) ? d : null;
+    } catch { return null; }
+  }
+  // go to another lake by choice: leave this one quietly and join that one (full or not)
+  async switchLake(n) {
+    if (!this.started || this.dead || n === this.lake) return false;
+    const old = this.ws; this.ws = null;
+    for (const id of this.ids) this.hooks.onLeave && this.hooks.onLeave(id);
+    this.ids.clear(); this.n = 1;
+    try { old && old.close(); } catch {}
+    const ok = await this.connect(n, true);
+    if (!ok) { this.lastCause = 'switch failed'; if (this.lake) await this.connect(this.lake, true); }
+    return !!ok;
+  }
   inviteUrl() {
     const u = new URL(location.href);
     const keep = new URLSearchParams(u.search).get('server');

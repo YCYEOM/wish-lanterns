@@ -2,6 +2,8 @@
 //
 //   GET /ws?lake=N&o=<owner>&s=<scarf>&since=<unix s>[&inv=1]   WebSocket into lake N
 //   GET /health                                                 "ok"
+//   GET /lakes   {lakes:[n1..n30], cap}   people in each lake (from the Lobby object, cached 10 s at the edge)
+//   GET /online  {online: total}          the same, summed (for listings such as metatrip)
 //   POST /admin/delete?lake=N&o=<owner>&k=<key>  (Bearer ADMIN_TOKEN secret)   remove a lantern
 //
 // Wire protocol (JSON, short keys to keep messages small):
@@ -27,7 +29,7 @@ const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
 const num = (v) => (Number.isFinite(+v) ? +v : 0);
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     if (url.pathname === '/health') return new Response('ok', { headers: cors });
     if (url.pathname === '/ws') {
@@ -35,6 +37,19 @@ export default {
       const lake = parseInt(url.searchParams.get('lake'), 10);
       if (!(lake >= 1 && lake <= LAKES)) return new Response('bad lake', { status: 400, headers: cors });
       return env.LAKE.get(env.LAKE.idFromName('lake-' + lake)).fetch(req);
+    }
+    if (url.pathname === '/lakes' || url.pathname === '/online') {
+      // one cached answer per 10 s per data centre: lake rooms are never woken for this, the Lobby at most once
+      const cache = caches.default, key = new Request('https://lobby.cache/lakes');
+      let res = await cache.match(key), lakes;
+      if (res) lakes = await res.json();
+      else {
+        try { lakes = await (await env.LOBBY.get(env.LOBBY.idFromName('lobby')).fetch('https://lobby/get')).json(); }
+        catch { lakes = Array(LAKES).fill(0); }
+        ctx.waitUntil(cache.put(key, new Response(JSON.stringify(lakes), { headers: { 'Cache-Control': 'max-age=10', 'Content-Type': 'application/json' } })));
+      }
+      const body = url.pathname === '/online' ? { online: lakes.reduce((a, b) => a + b, 0) } : { lakes, cap: CAP };
+      return new Response(JSON.stringify(body), { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'max-age=10' } });
     }
     if (url.pathname === '/admin/delete' && req.method === 'POST') {
       if (!env.ADMIN_TOKEN || req.headers.get('Authorization') !== 'Bearer ' + env.ADMIN_TOKEN) return new Response('no', { status: 403 });
@@ -97,6 +112,7 @@ export class Lake extends DurableObject {
     for (const ws of others) { const a = ws.deserializeAttachment(); if (a && a.x !== null) peers.push({ id: a.id, x: a.x, z: a.z, s: a.s, sit: a.sit | 0 }); }
     server.send(JSON.stringify({ t: 'hi', lake: this.lake, id, n: others.length + 1, lanterns, peers, away, now }));
     this.broadcast({ t: 'j', id, n: others.length + 1 }, server);
+    this.report(others.length + 1);
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -170,7 +186,35 @@ export class Lake extends DurableObject {
     try { ws.close(1000, 'bye'); } catch {}
     if (!me || !me.id) return;
     this.rate.delete(me.id);
-    const n = this.ctx.getWebSockets().filter((w) => w !== ws).length;
+    const n = this.ctx.getWebSockets().filter((w) => w !== ws && w.deserializeAttachment()?.id).length;
     this.broadcast({ t: 'x', id: me.id, n }, ws);
+    this.report(n);
+  }
+
+  // tell the Lobby how many people are here now (one request on each arrival and departure)
+  report(n) {
+    if (!this.lake) return;
+    const p = this.env.LOBBY.get(this.env.LOBBY.idFromName('lobby')).fetch(`https://lobby/set?lake=${this.lake}&n=${n}`).catch(() => {});
+    this.ctx.waitUntil ? this.ctx.waitUntil(p) : null;
+  }
+}
+
+// the head count of every lake, kept by the lakes themselves (they report on each arrival and departure)
+export class Lobby extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.sql = ctx.storage.sql;
+    this.sql.exec('CREATE TABLE IF NOT EXISTS lakes (n INTEGER PRIMARY KEY, c INTEGER, at INTEGER)');
+  }
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (url.pathname === '/set') {
+      const n = parseInt(url.searchParams.get('lake'), 10), c = Math.max(0, parseInt(url.searchParams.get('n'), 10) || 0);
+      if (n >= 1 && n <= LAKES) this.sql.exec('INSERT OR REPLACE INTO lakes (n, c, at) VALUES (?, ?, ?)', n, c, Date.now());
+      return new Response('ok');
+    }
+    const out = Array(LAKES).fill(0), stale = Date.now() - 6 * 3600 * 1000;   // a lake silent for 6 h is surely empty
+    for (const r of this.sql.exec('SELECT n, c, at FROM lakes').toArray()) if (r.at > stale) out[r.n - 1] = r.c;
+    return new Response(JSON.stringify(out), { headers: { 'Content-Type': 'application/json' } });
   }
 }

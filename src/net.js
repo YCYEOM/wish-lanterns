@@ -131,6 +131,8 @@ export class Net {
     }
   }
 
+  async lakeCounts() { return null; }   // serverless: nobody keeps a tally
+  async switchLake(n) { if (!this.joinRoom || n === this.lake) return false; this.joinLake(n); this.lastCause = 'chosen'; return true; }
   inviteUrl() {
     const u = new URL(location.href);
     u.search = ''; u.hash = '';

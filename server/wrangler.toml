@@ -9,12 +9,20 @@ compatibility_date = "2025-09-01"
 [assets]
 directory = "../dist"
 not_found_handling = "single-page-application"
-run_worker_first = ["/ws", "/health", "/admin/*"]
+run_worker_first = ["/ws", "/health", "/lakes", "/online", "/admin/*"]
 
 [[durable_objects.bindings]]
 name = "LAKE"
 class_name = "Lake"
 
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "Lobby"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Lake"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Lobby"]
