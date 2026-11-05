@@ -91,7 +91,7 @@ export class ServerNet {
     for (const p of d.peers || []) { this.ids.add(p.id); this.hooks.onPos && this.hooks.onPos(p.id, { x: p.x, z: p.z, cer: null, s: p.s | 0 }); }
     for (const l of (d.lanterns || []).slice().reverse()) {
       if (!l || l.o === this.owner) continue;
-      this.hooks.onLantern({ netId: `${l.o}:${l.k}`, text: l.tx || '', color: l.c, mode: l.m === 'sky' ? 'sky' : 'water' }, '', false);
+      this.hooks.onLantern({ netId: `${l.o}:${l.k}`, text: l.tx || '', color: l.c, mode: l.m === 'sky' ? 'sky' : 'water', hearts: l.hearts | 0 }, '', false);
     }
     for (const a of d.away || []) this.hooks.onAwayHeart && this.hooks.onAwayHeart(a.id, a.h);
   }

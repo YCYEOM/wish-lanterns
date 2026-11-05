@@ -865,7 +865,7 @@ const netHooks = {
     }
     makeLantern({ id: e.netId, who, text, color: e.color, mode: e.mode, x, y, z,
       vx: by ? by.w.lakeDir().x * (water ? 1.6 : 0.4) : 0, vz: by ? by.w.lakeDir().z * (water ? 1.6 : 0.4) : fresh ? (water ? -1.6 : -0.4) : 0,
-      vy: water ? 0 : 0.5, alpha: 0, fadeIn: by ? 2.6 : 2, fresh: fresh ? 5 : 0, hearts: 0 });
+      vy: water ? 0 : 0.5, alpha: 0, fadeIn: by ? 2.6 : 2, fresh: fresh ? 5 : 0, hearts: e.hearts | 0 });
     if (fresh) lanterns[lanterns.length - 1].grow = 0;   // starts small, like one just let go of
     if (fresh && screen !== 'title' && T - lastArrivalToast > 4) {
       lastArrivalToast = T;

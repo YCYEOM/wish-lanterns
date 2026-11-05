@@ -163,6 +163,8 @@ https://ycyeom.github.io/wish-lanterns/
 - `server/`: one Cloudflare Worker serves `dist/` (static assets, free and unmetered) and `/ws`.
   Each lake is a Durable Object (SQLite, WebSocket hibernation, free plan): relays walker positions,
   lanterns, hearts and star wishes; keeps lanterns 24 h and hearts 7 days (away hearts on the next visit);
+  a newcomer gets only the newest 30 lanterns + the day's 20 most-hearted (lanterns.hearts, bumped once per
+  unique heart), read through indexes on at / hearts so a join reads ~50 rows (free plan counts rows read);
   cleans text with `cleanMessage` from src/data.js; rate limits (lantern 1 / 4 s, hearts 30 / min, wish 1 / 3 s);
   lake cap 10 for auto-join (a full lake answers `{t:'full'}` and the client tries the next).
   `POST /admin/delete?lake=N&o=&k=` with `Authorization: Bearer $ADMIN_TOKEN` (wrangler secret) removes a lantern.

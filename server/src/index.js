@@ -17,7 +17,7 @@ const LAKES = 30;
 const CAP = 10;                         // people per lake before the auto-join moves a newcomer on
 const LANTERN_TTL = 24 * 3600 * 1000;
 const HEART_TTL = 7 * 24 * 3600 * 1000;
-const MAX_LANTERNS = 80;                // sent to a newcomer
+const LATEST = 30, LOVED = 20;          // a newcomer gets the newest lanterns and the day's most-hearted ones
 const COLORS = new Set(COLOR_LIST.map((c) => c.id));
 
 const cors = { 'Access-Control-Allow-Origin': '*' };
@@ -48,8 +48,13 @@ export class Lake extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS lanterns (o TEXT, k TEXT, t TEXT, c TEXT, m TEXT, at INTEGER, PRIMARY KEY (o, k))`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS hearts (h TEXT PRIMARY KEY, owner TEXT, id TEXT, at INTEGER)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS lanterns (o TEXT, k TEXT, t TEXT, c TEXT, m TEXT, at INTEGER, hearts INTEGER DEFAULT 0, PRIMARY KEY (o, k))`);
+    // indexes so a join reads only the rows it sends (rows read are what the free plan counts), and pruning
+    // touches only the rows it deletes
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS lanterns_at ON lanterns (at)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS lanterns_hearts ON lanterns (hearts)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS hearts_at ON hearts (at)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS hearts_owner ON hearts (owner, at)`);
     this.lake = 0;
     this.rate = new Map();               // socket id -> { l: last lantern ms, h: hearts this minute, hm: minute }
@@ -79,7 +84,11 @@ export class Lake extends DurableObject {
     server.serializeAttachment(me);
 
     this.prune(now);
-    const lanterns = this.sql.exec('SELECT o, k, t AS tx, c, m, at FROM lanterns ORDER BY at DESC LIMIT ?', MAX_LANTERNS).toArray();
+    const cols = 'SELECT o, k, t AS tx, c, m, at, hearts FROM lanterns';
+    const latest = this.sql.exec(`${cols} ORDER BY at DESC LIMIT ?`, LATEST).toArray();
+    const loved = this.sql.exec(`${cols} WHERE hearts > 0 ORDER BY hearts DESC LIMIT ?`, LOVED).toArray();
+    const seen = new Set(latest.map((l) => l.o + ':' + l.k));
+    const lanterns = latest.concat(loved.filter((l) => !seen.has(l.o + ':' + l.k)));
     const since = Math.max(num(url.searchParams.get('since')) * 1000, now - HEART_TTL);
     const away = this.sql.exec('SELECT id, h FROM hearts WHERE owner = ? AND at > ? LIMIT 200', owner, since).toArray();
     const peers = [];
@@ -130,7 +139,10 @@ export class Lake extends DurableObject {
         if (++r.h > 30) return;
         const id = str(d.id, 80), h = str(d.h, 60); if (!id || !h) return;
         const owner = id.includes(':') ? id.split(':')[0] : '';
-        if (owner) this.sql.exec('INSERT OR IGNORE INTO hearts (h, owner, id, at) VALUES (?, ?, ?, ?)', h, owner, id, now);
+        if (owner) {
+          const fresh = this.sql.exec('INSERT OR IGNORE INTO hearts (h, owner, id, at) VALUES (?, ?, ?, ?)', h, owner, id, now).rowsWritten > 0;
+          if (fresh) this.sql.exec('UPDATE lanterns SET hearts = hearts + 1 WHERE o = ? AND k = ?', owner, id.slice(owner.length + 1));
+        }
         this.broadcast({ t: 'h', id, h }, ws);
         return;
       }
