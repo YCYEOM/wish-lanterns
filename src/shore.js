@@ -163,6 +163,7 @@ const LIGHT_GLSL = /* glsl */`
     float flick = 0.9 + 0.1 * sin(time * 6.1) * sin(time * 2.3 + 1.0);
     lit += col * vec3(1.5, 0.78, 0.34) * exp(-ld * ld * 0.09) * 0.95 * flick * (0.3 + 0.7 * max(dot(N, toL / max(ld, 1e-3)), 0.0));
     // the stone lanterns and candle cairns along the beach: warm pools on the sand around each
+    #ifndef NO_LAMPS
     for (int i = 0; i < 20; i++) {
       vec4 Lp = lamps[i]; if (Lp.w <= 0.0) continue;
       vec3 tl = Lp.xyz - W; float dl2 = dot(tl, tl);
@@ -172,6 +173,7 @@ const LIGHT_GLSL = /* glsl */`
       float fl = 0.88 + 0.12 * sin(time * (5.3 + float(i)) + float(i) * 2.1) * sin(time * 1.9 + float(i));
       lit += col * vec3(1.55, 0.74, 0.30) * exp(-dl * dl * fall) * Lp.w * fl * smoothstep(0.35, 1.1, dl) * (0.35 + 0.65 * max(dot(N, tl / max(dl, 1e-3)), 0.0));
     }
+    #endif
     return lit;
   }
   vec3 shoreFog(vec3 lit, vec3 W){
@@ -183,6 +185,8 @@ const LIGHT_GLSL = /* glsl */`
   }`;
 
 // one lit material for the instanced dressing: per-instance tint (aCol), optional wind sway on height
+// lite tier (quality.js): the scatter skips the per-lamp light (the ground keeps it)
+let DRESS_DEFS = '';
 function dressingMaterial(u, sway, doubleSide, grain = false) {
   return new THREE.ShaderMaterial({
     uniforms: u, side: doubleSide ? THREE.DoubleSide : THREE.FrontSide, fog: false,
@@ -196,6 +200,7 @@ function dressingMaterial(u, sway, doubleSide, grain = false) {
         vW = w.xyz; vN = normalize(mat3(modelMatrix * instanceMatrix) * normal); vC = aCol; vH = position.y;
         gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: /* glsl */`
+      ${DRESS_DEFS}
       ${LIGHT_GLSL}
       varying vec3 vW; varying vec3 vN; varying vec3 vC; varying float vH;
       void main(){
@@ -326,9 +331,10 @@ function ringPt(a, d) {
   return { x: LAKE.cx + Math.cos(a) * r, z: LAKE.cz + Math.sin(a) * r };
 }
 
-export function buildShore(scene, uniforms) {
-  // polar ring around the lake: dense near the waterline, sparse far away
-  const SEG = 320, RINGS = 90;
+export function buildShore(scene, uniforms, { lite = false } = {}) {
+  // polar ring around the lake: dense near the waterline, sparse far away (coarser in the lite tier, quality.js)
+  const SEG = lite ? 160 : 320, RINGS = lite ? 48 : 90;
+  DRESS_DEFS = lite ? '#define NO_LAMPS' : '';
   const pos = [], idx = [];
   for (let j = 0; j <= RINGS; j++) {
     const t = j / RINGS;
@@ -365,6 +371,7 @@ export function buildShore(scene, uniforms) {
       void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vN = normalize(normal);
         gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: /* glsl */`
+      ${lite ? '#define LITE' : ''}
       ${LIGHT_GLSL}
       uniform vec3 lakeC; uniform float lakeR;
       varying vec3 vW; varying vec3 vN;
@@ -391,7 +398,11 @@ export function buildShore(scene, uniforms) {
         float a = atan(p.y - lakeC.z, p.x - lakeC.x);
         float shoreR = lakeR * (1.0 + 0.035 * sin(a * 5.0 + 1.3) + 0.02 * sin(a * 11.0 + 0.4));
         float d = r - shoreR;                           // distance from the waterline
+        #ifdef LITE
+        float big = n21(p * 0.07), mid = n21(p * 0.6), fine = 0.5;
+        #else
         float big = fbm(p * 0.07), mid = fbm(p * 0.6), fine = n21(p * 7.0);
+        #endif
 
         // --- the wash: the lake laps up the sand and slides back
         float wave = 0.5 + 0.5 * sin(time * 0.55 + a * 9.0 + big * 3.0);
@@ -407,43 +418,60 @@ export function buildShore(scene, uniforms) {
         vec3 grassA = vec3(0.075, 0.13, 0.065), grassB = vec3(0.13, 0.17, 0.07), soil = vec3(0.12, 0.09, 0.06);
         vec3 col = sandDry;
         col *= 0.78 + 0.32 * mid + 0.14 * (fine - 0.5);
+        #ifndef LITE
         // pebbles and shell flecks scattered over the sand, thicker near the water
         float peb = pebble(p * 3.2, 0.10 + 0.25 * (1.0 - smoothstep(1.0, 6.0, d)));
         float pebShade = h21(floor(p * 3.2) + 5.0);
         col = mix(col, mix(vec3(0.08, 0.07, 0.07), vec3(0.42, 0.37, 0.32), pebShade), peb * 0.8);
         float fleck = step(0.993, h21(floor(p * 22.0)));
         col += fleck * vec3(0.18, 0.16, 0.14);
+        #endif
         // damp and wet sand toward the water
         col = mix(col, sandDamp * (0.8 + 0.4 * mid), wetK * 0.92);
         // the wrack line: a ragged dark seam of weed and twigs where the high water stopped
+        #ifndef LITE
         float wr = exp(-pow((d - wetLine - 0.2) / 0.22, 2.0)) * smoothstep(0.4, 0.65, n21(p * 2.6 + 11.0));
         col = mix(col, vec3(0.045, 0.04, 0.03), wr * 0.75);
+        #endif
         col = mix(col, mix(sandWet, vec3(0.02, 0.025, 0.05), 0.55 * (1.0 - smoothstep(0.0, reach, d))), washK);   // a thin film of water over the sand
         // the grass bank creeps down over the sand in tongues
         float gEdge = 7.2 + 5.0 * big + 1.5 * mid;
         float gK = smoothstep(gEdge, gEdge + 2.5, d);
         // patchy, even in every direction (a stretched streak noise read as brush smears from afar),
         // softening into the broad patches with distance so the far bank does not shimmer
+        #ifdef LITE
+        float streak = mid;
+        vec3 grass = mix(grassA, grassB, mid) * (0.6 + 0.7 * streak);
+        #else
         float gFar = smoothstep(12.0, 40.0, length(cameraPosition.xz - p));
         float streak = mix(0.55 * n21(p * 3.1) + 0.45 * n21(p * 7.3 + 4.0), mid, gFar);
         float tuftK = smoothstep(0.6, 0.7, fbm(p * 0.9 + 3.0)) * smoothstep(3.0, 6.0, d);
         gK = max(gK, tuftK * 0.55 * (0.4 + 0.6 * streak));
         vec3 grass = mix(grassA, grassB, mid) * (0.6 + 0.7 * streak);
         grass = mix(grass, soil, smoothstep(0.55, 0.75, fbm(p * 0.35 + 9.0)) * 0.6);
+        #endif
         col = mix(col, seasonLeaf(grass, vW, 0.0), gK);
         // a darker damp-soil seam where grass meets sand
         col *= 1.0 - 0.25 * (smoothstep(gEdge - 1.5, gEdge, d) - smoothstep(gEdge + 0.5, gEdge + 2.5, d));
 
         // --- bump normal from the sand height field (dry sand only)
+        #ifdef LITE
+        float hS = 0.0; vec3 N = normalize(vN);
+        #else
         float bm = (1.0 - gK) * (1.0 - wetK * 0.7);
         float e = 0.04;
         float hS = sandH(p, d) * bm;
         float hx = sandH(p + vec2(e, 0.0), d) * bm, hz = sandH(p + vec2(0.0, e), d) * bm;
         vec3 N = normalize(normalize(vN) + vec3(-(hx - hS) / e, 0.0, -(hz - hS) / e) * 0.06);
+        #endif
         float cav = 0.85 + 0.3 * hS;                      // ripple troughs sit a little darker
         col *= cav;
         // a blanket of snow over the beach and the bank, thinning to bare wet sand at the water
+        #ifdef LITE
+        float snowK = snowCover * smoothstep(0.6, 2.4, d - reach);
+        #else
         float snowK = snowCover * smoothstep(0.6, 2.4, d - reach) * (0.82 + 0.18 * fbm(p * 0.8 + 21.0));
+        #endif
         col = mix(col, vec3(0.50, 0.54, 0.66) * (0.92 + 0.12 * fine), snowK);
         vec3 lit = shoreLight(col, N, vW, 1.0);
 
@@ -459,6 +487,10 @@ export function buildShore(scene, uniforms) {
 
         // --- foam: the frothy lip of the running wave plus a broken line at the waterline
         // lace: a cellular-ish net of thin foam strands, drifting with the backwash
+        #ifdef LITE
+        float lip = smoothstep(reach - 0.55, reach - 0.05, d) * (1.0 - smoothstep(reach - 0.05, reach + 0.08, d)) * 0.5 * (0.35 + 0.65 * wave);
+        lit += vec3(0.17, 0.18, 0.24) * lip;
+        #else
         vec2 fp = p * 2.2 + vec2(0.0, -time * 0.25);
         float lace = abs(n21(fp) - n21(fp * 1.9 + 4.0));
         lace = 1.0 - smoothstep(0.0, 0.2, lace);                         // thin strands where the two fields cross
@@ -469,6 +501,7 @@ export function buildShore(scene, uniforms) {
         vec2 bc = p * 9.0 + vec2(0.0, floor(time * 0.8) * 3.7);
         float bubbles = step(0.78, h21(floor(bc))) * (1.0 - smoothstep(0.06, 0.16, length(fract(bc) - 0.5))) * washK * smoothstep(reach - 0.8, reach, d) * 0.25;
         lit += vec3(0.17, 0.18, 0.24) * (lip + edge + bubbles);
+        #endif
 
         gl_FragColor = vec4(shoreFog(lit, vW), 1.0);
         #include <tonemapping_fragment>
@@ -500,7 +533,7 @@ export function buildShore(scene, uniforms) {
     tufts.push({ x: q.x, y: terrainY(q.x, q.z) - 0.03, z: q.z, ry: rr(0, 6.28), sx: s, sy: s * rr(0.8, 1.3), sz: s,
       c: [0.20 * g, 0.30 * g, 0.13 * g] });
   }
-  instanced(dress, bladeTuft(9, 0.7, 0.28, 0.035, 11), dressingMaterial(shoreUniforms, 0.12, true), tufts, 'grass');
+  instanced(dress, bladeTuft(9, 0.7, 0.28, 0.035, 11), dressingMaterial(shoreUniforms, 0.12, true), lite ? tufts.filter((_, i) => i % 5 === 0) : tufts, 'grass');
 
   // rocks: little stones on the open sand, boulder clusters at the ends of the beach and in the shallows
   const rocks = [];
@@ -550,7 +583,7 @@ export function buildShore(scene, uniforms) {
       reeds.push({ x: q.x, y: Math.max(terrainY(q.x, q.z), -0.35), z: q.z, ry: rr(0, 6.28), sx: rr(0.8, 1.3), sy: s, sz: rr(0.8, 1.3), c: [0.17 * g, 0.21 * g, 0.10 * g] });
     }
   }
-  instanced(dress, reedClump(21), dressingMaterial(shoreUniforms, 0.09, true), reeds, 'reeds');
+  instanced(dress, reedClump(21), dressingMaterial(shoreUniforms, 0.09, true), lite ? reeds.filter((_, i) => i % 3 === 0) : reeds, 'reeds');
 
   // trees and bushes framing the ends of the beach (outside the walkable arc, never behind the camera)
   const trees = [], bushes = [];

@@ -4,6 +4,7 @@ import { Audio, MUSIC_DEFAULTS } from './audio.js';
 import { Net, invitedLake } from './net.js';
 import { ServerNet } from './servernet.js';
 import { serverUrl } from './config.js';
+import { LITE, SOFTWARE_GPU } from './quality.js';
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
 import * as shore from './shore.js';
@@ -46,20 +47,18 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 // (a Windows laptop's integrated graphics at 125-150 % scaling) renders fewer pixels instead of stuttering.
 // Starts at the screen's ratio (max 2, desktop max 1.5), steps down while frames miss the screen's refresh,
 // back up after a few smooth seconds.
-const RES_MAX = Math.min(window.devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 2 : 1.25);
-const RES_MIN = Math.min(RES_MAX, 0.6);
+const RES_MAX = LITE ? 0.5 : Math.min(window.devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 2 : 1.25);
+const RES_MIN = Math.min(RES_MAX, LITE ? 0.45 : 0.6);   // lite: below this it only gets blurrier, not faster
 // which GPU the browser gave us: a software renderer (graphics acceleration off, a blocked driver) cannot run this
 // scene smoothly at any size, so start small and say how to turn acceleration back on
-const GPU_NAME = (() => { try { const gl = renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); return String(e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)); } catch { return ''; } })();
-const SOFTWARE_GPU = /swiftshader|llvmpipe|software|basic render|microsoft basic/i.test(GPU_NAME);
-let resScale = SOFTWARE_GPU ? Math.min(RES_MAX, 0.6) : RES_MAX, resT = 0, resN = 0, resSlow = 0, resGood = 0, vsync = 1 / 60;
+let resScale = RES_MAX, resT = 0, resN = 0, resSlow = 0, resGood = 0, vsync = 1 / 60;
 let resCeil = RES_MAX, resWarm = 2, resLastUp = false;
 renderer.setPixelRatio(resScale);
 // judged by missed refreshes, not the average: a frame that takes two refreshes is the visible hitch
 function adaptRes(dt) {
   if (window.__fixedRes || document.hidden || dt <= 0 || dt > 0.25) return;
   vsync = Math.min(vsync * 1.002, Math.max(1 / 240, dt));      // the screen's refresh: the shortest interval seen
-  resT += dt; resN++; if (dt > Math.max(vsync, 1 / 60) * 1.7) resSlow++;   // frames are capped at 60 (frame())
+  resT += dt; resN++; if (dt > Math.max(vsync, 1 / FPS_CAP) * 1.7) resSlow++;   // frames are capped at 60 (frame())
   if (resT < 1.2) return;                                         // judge over about a second
   const slow = resSlow / resN; resT = 0; resN = 0; resSlow = 0;
   if (resWarm > 0) { resWarm--; return; }                         // loading hitches are not the steady state
@@ -109,7 +108,9 @@ float noise3(vec3 p){
 float fbm(vec3 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++){ s += a*noise3(p); p *= 2.03; a *= 0.5; } return s; }
 // three octaves: what the rippled reflection of the sky needs (its fine detail is broken up by the waves anyway)
 float fbm3(vec3 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++){ s += a*noise3(p); p *= 2.03; a *= 0.5; } return s + 0.125; }
-#ifdef SKY_LOW
+#if defined(LITE)
+#define SKYFBM(p) 0.5
+#elif defined(SKY_LOW)
 #define SKYFBM fbm3
 #else
 #define SKYFBM fbm
@@ -192,7 +193,8 @@ vec3 skyColor(vec3 dir, float t, float starAmt){
 const sky = new THREE.Mesh(new THREE.SphereGeometry(500, 48, 24), new THREE.ShaderMaterial({
   uniforms, side: THREE.BackSide, depthWrite: false, fog: false,
   vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `uniform float time; varying vec3 vDir; ${GLSL_COMMON}
+  fragmentShader: `${LITE ? '#define LITE' : ''}
+    uniform float time; varying vec3 vDir; ${GLSL_COMMON}
     void main(){ gl_FragColor = vec4(skyColor(normalize(vDir), time, 1.0), 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -206,6 +208,7 @@ const water = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400, 1, 1), new THRE
   uniforms, depthWrite: false, fog: false,
   vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
   fragmentShader: `#define SKY_LOW
+    ${LITE ? '#define LITE' : ''}
     uniform float time; uniform vec3 camPos; varying vec3 vW; ${GLSL_COMMON}
     void main(){
       vec3 v = normalize(camPos - vW);
@@ -220,8 +223,10 @@ const water = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400, 1, 1), new THRE
       g += d1 * cos(dot(p, d1) * 0.37 + t * 0.55) * 0.026 * kf;
       g += d2 * cos(dot(p, d2) * 0.53 - t * 0.47) * 0.022 * kf;
       g += d3 * cos(dot(p, d3) * 1.11 + t * 0.95) * 0.014 * k * kf;
+      #ifndef LITE
       g += (vec2(noise3(vec3(p*0.6, t*0.3)), noise3(vec3(p*0.6 + 9.0, t*0.3))) - 0.5) * 0.07 * k;
       g += (vec2(noise3(vec3(p*1.7, t*0.5)), noise3(vec3(p*1.7 + 4.0, t*0.5))) - 0.5) * 0.035 * k * kf;
+      #endif
       // raindrops: rings opening on a jittered grid, only near enough to read
       if (rainK > 0.001 && dist < 45.0) {
         for (int j = 0; j < 2; j++) {
@@ -256,7 +261,7 @@ let beach = null;
 function buildWorld() {
   reseed(7);
   // the walkable moonlit beach ring around the lake (shore.js)
-  beach = shore.buildShore(scene, uniforms);
+  beach = shore.buildShore(scene, uniforms, { lite: LITE });
 
   // hill rings
   function ring(radius, hBase, hAmp, color, seg) {
@@ -355,12 +360,18 @@ function buildWorld() {
   scene.add(ff);
 }
 buildWorld();
+// lite tier (quality.js): the small scatter on the sand is most of the scene's triangles; keep a share of each
+if (LITE) {
+  const KEEP = { pebbles: 0, twigs: 0, shells: 0, grass: 0.3, rock: 0.35, driftwood: 0.5, bush: 0.35, reeds: 0.6 };
+  const dress = scene.children.find((o) => o.userData.tag === 'shore-dressing');
+  if (dress) for (const m of dress.children) if (m.isInstancedMesh && m.userData.tag in KEEP) { m.count = Math.ceil(m.count * KEEP[m.userData.tag]); m.visible = m.count > 0; }
+}
 
 // ---------------------------------------------------------------- Seoul weather + season
 // the season comes from today's date in Seoul; the weather is fetched once per visit (clear night of the
 // season if the weather service does not answer within a few seconds)
 const atmos = createAtmosphere(scene, uniforms, { pixelRatio: renderer.getPixelRatio(),
-  coarse: !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches) });
+  coarse: LITE || !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches), lite: LITE });
 const seoul = { season: seoulSeason(), weather: null, temp: null, tried: false };
 let forcedWeather = null, forcedSeason = null, weatherNoticed = false;
 function applyAtmos(instant) {
@@ -537,11 +548,11 @@ function populate() {
       makeLantern({ id, text: msgs[i], color, mode, x, y: 0, z, hearts: Math.floor(Math.pow(rng(), 2.4) * 11) });
     } else {
       const [x, z] = randomLakePoint(0.9, -15);
-      makeLantern({ id, text: msgs[i], color, mode, x, y: rr(4, 90), z, hearts: 1 + Math.floor(rng() * 14) });
+      makeLantern({ id, text: msgs[i], color, mode, x, y: rr(4, 90), z, hearts: Math.floor(Math.pow(rng(), 2.4) * 11) });
     }
   }
   // extra wordless background lanterns so the lake always feels full
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < (LITE ? 6 : 16); i++) {   // lite tier: fewer of them (each is several draw calls)
     const id = 'b' + i;
     if (save.hidden.includes(id)) continue;
     const mode = i % 2 ? 'sky' : 'water';
@@ -1070,7 +1081,7 @@ function startGame() {
   $('hud').classList.remove('hidden');
   updateStats();
   net.start();
-  if (SOFTWARE_GPU) setTimeout(() => toast('⚠️ 브라우저의 그래픽 가속이 꺼져 있어 화면이 끊길 수 있어요 · 크롬 설정 → 시스템 → "가능한 경우 그래픽 가속 사용"을 켜 주세요', 9000), 2500);
+  if (SOFTWARE_GPU) setTimeout(() => toast('⚠️ 그래픽 가속이 꺼져 있어 가벼운 화면으로 보여 드려요 · 크롬 설정 → 시스템 → "가능한 경우 그래픽 가속 사용"을 켜면 훨씬 예뻐요', 9000), 2500);
   const inv = invitedLake();
   if (inv) setTimeout(() => toast(`초대받은 호수 ${inv}에 들어왔어요`, 3500), 1400);
   noticeWeather();
@@ -1411,9 +1422,10 @@ let last = performance.now();
 // at most 60 frames a second: a 120-165 Hz screen would otherwise have the GPU draw this whole scene two or three
 // times as often, flat out, slowing the rest of the computer with it
 let nextDraw = 0;
+const FPS_CAP = LITE ? 30 : 60;
 function frame(now) {
   if (now < nextDraw - 2 && !window.__fixedRes) { requestAnimationFrame(frame); return; }
-  nextDraw = Math.max(nextDraw + 1000 / 60, now);
+  nextDraw = Math.max(nextDraw + 1000 / FPS_CAP, now);
   adaptRes((now - last) / 1000);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (frozen) { requestAnimationFrame(frame); return; }
@@ -1539,7 +1551,9 @@ window.__studio.advance = (ms) => { for (let i = 0, n = Math.round(ms / (1000 / 
 window.__studio.fakeArrival = (mode = 'sky', text = 'test', color = 'amber', who = 'tester') => { net.hooks.onLantern({ netId: 'x:' + Date.now(), text, color, mode }, who, true); return lanterns[lanterns.length - 1].id; };
 window.__studio.place = (id, x, z, hearts, color = 'amber', mode = 'water') => { makeLantern({ id, text: 'demo', color, mode, x, y: mode === 'sky' ? 3 : 0, z, hearts }); return id; };
 window.__studio.loveInfo = (id) => { const L = lanterns.find(l => l.id === id); return L && { hearts: L.hearts, love: +L.love.toFixed(2), halo: L.halo && { op: +L.halo.material.opacity.toFixed(2), sc: +L.halo.scale.x.toFixed(2), vis: L.halo.visible }, glow: +L.glow.material.opacity.toFixed(2), glowSc: +L.glow.scale.x.toFixed(2), motes: !!L.motes, alpha: L.alpha }; };
-window.__studio.gpu = () => { if (0) return { GPU_NAME, SOFTWARE_GPU }; const gl = renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info'); return { renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, points: renderer.info.render.points, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs.length, res: resScale, canvas: canvas.width + 'x' + canvas.height }; };
+window.__studio.renderCost = () => { const gl = renderer.getContext(); const px = new Uint8Array(4); const t = () => { let best = 1e9; for (let i = 0; i < 4; i++) { const s = performance.now(); renderer.render(scene, camera); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); best = Math.min(best, performance.now() - s); } return best; }; t(); const base = t(); const out = { base: [+base.toFixed(1), renderer.info.render.triangles] }; scene.children.forEach((o, i) => { if (!o.visible) return; o.visible = false; const ms = t(); const tris = renderer.info.render.triangles; const k = (o.type + ':' + (o.name || o.userData.tag || i)) + (o.isInstancedMesh ? '[' + o.count + ']' : '') + (o.material && o.material.type ? '/' + o.material.type : ''); out[k] = [+(base - ms).toFixed(1), out.base[1] - tris]; o.visible = true; }); return out; };
+window.__studio.dressTris = () => { const d = scene.children.find(o => o.userData.tag === 'shore-dressing'); return d ? d.children.map(c => [c.userData.tag || c.type, c.count ?? 1, c.geometry ? (c.geometry.index ? c.geometry.index.count : c.geometry.attributes.position.count) / 3 : 0, Math.round((c.count ?? 1) * (c.geometry ? (c.geometry.index ? c.geometry.index.count : c.geometry.attributes.position.count) / 3 : 0))]) : null; };
+window.__studio.gpu = () => { const gl = renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info'); return { renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, points: renderer.info.render.points, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs.length, lite: LITE, res: resScale, canvas: canvas.width + 'x' + canvas.height }; };
 window.__studio.openId = (id) => { const L = lanterns.find(l => l.id === id); if (L) openCard(L); return !!L; };
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];

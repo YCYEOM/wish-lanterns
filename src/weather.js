@@ -118,8 +118,8 @@ function makeFall(kind, count, box, opts, uniforms, pixelRatio) {
   return { pts, amt };
 }
 
-export function createAtmosphere(scene, uniforms, { pixelRatio = 1, coarse = false } = {}) {
-  const k = coarse ? 0.55 : 1;   // phones: fewer points
+export function createAtmosphere(scene, uniforms, { pixelRatio = 1, coarse = false, lite = false } = {}) {
+  const k = lite ? 0.3 : coarse ? 0.55 : 1;   // phones: fewer points; software rendering: far fewer
   const falls = {
     rain: makeFall('rain', Math.round(1500 * k), new THREE.Vector3(40, 22, 40), { seed: 11, speed: 16, sway: 0.3, swayAmt: 0.15, drift: -0.6, size: 260, below: 1.5, maxPx: 70 }, uniforms, pixelRatio),
     snow: makeFall('snow', Math.round(1700 * k), new THREE.Vector3(40, 20, 40), { seed: 23, speed: 1.1, sway: 0.6, swayAmt: 0.9, drift: 0.15, size: 110, below: 1.5, maxPx: 22 }, uniforms, pixelRatio),
@@ -160,6 +160,7 @@ export function createAtmosphere(scene, uniforms, { pixelRatio = 1, coarse = fal
     ease(uniforms.snowCover, tgt.snowCover); ease(uniforms.ffAmt, tgt.ffAmt);
     uniforms.season.value.lerp(v4.set(...tgt.s), e);
     ease(falls.rain.amt, tgt.rain); ease(falls.snow.amt, tgt.snow); ease(falls.petal.amt, tgt.petal); ease(falls.leaf.amt, tgt.leaf);
+    for (const f of Object.values(falls)) f.pts.visible = f.amt.value > 0.004;   // not drawn at all when not falling
   }
   set({ weather, season, instant: true });
   return {

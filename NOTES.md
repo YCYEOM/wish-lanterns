@@ -201,3 +201,8 @@ https://ycyeom.github.io/wish-lanterns/
   recomposited every frame), desktop pixel ratio max 1.25, and a software GPU (SwiftShader / Basic Render) starts at
   0.6 resolution with a toast on how to turn Chrome's graphics acceleration on. `__studio.gpu()` reports GPU,
   draw calls, resolution. Proof: `.studio/gpusw.mjs` (SwiftShader → res 0.6 + toast).
+- Lite tier (`src/quality.js`, LITE when WebGL runs in software, or ?lite; ?full forces off): sky without Milky
+  Way/cloud fbm, water without noise ripples, ground without pebbles/bump/foam/fbm (#define LITE), scatter without
+  per-lamp light (NO_LAMPS), coarser ground mesh, a share of the scatter (pebbles/twigs/shells off), fewer
+  background lanterns and weather points, falls hidden when not falling, 30 fps cap, resolution 0.45-0.5.
+  SwiftShader on an M2: ~3 fps → ~15 fps (`.studio/prof-sw.mjs`, `.studio/cost.mjs sw` per-object cost).
