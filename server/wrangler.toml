@@ -2,6 +2,7 @@
 # each lake is a Durable Object (SQLite storage, WebSocket hibernation) that relays walkers, lanterns,
 # hearts and shooting-star wishes, and remembers a day of lanterns and a week of hearts.
 name = "wish-lanterns"
+account_id = "95e7ef43fb7e1c648a6d7d01ce6a7104"
 main = "src/index.js"
 compatibility_date = "2025-09-01"
 

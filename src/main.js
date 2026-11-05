@@ -440,15 +440,31 @@ function makeLantern(opts) {
     x: opts.x, y: opts.y, z: opts.z, vx: opts.vx || 0, vz: opts.vz || 0, vy: opts.vy || 0,
     ph: rng() * 100, ph2: rng() * 100, speed: rr(0.5, 1), alpha: opts.alpha ?? 1, fadeIn: opts.fadeIn || 0,
     rot: rng() * Math.PI * 2, selected: 0, fresh: opts.fresh || 0, baseScale,
+    liked: save.hearted.includes(opts.id), halo: null, motes: null,
+    love: loveOf((opts.hearts | 0) + (save.hearted.includes(opts.id) ? 1 : 0)),
   };
   g.rotation.y = L.rot;
   lanterns.push(L);
   return L;
 }
 
+// how loved a lantern is, 0..1, from its hearts: 1 ♡ ≈ .27, 3 ≈ .54, 5 ≈ .7, 12+ = 1
+const loveOf = (h) => (h > 0 ? Math.min(1, Math.log2(1 + h) / Math.log2(13)) : 0);
+const HALO_COLOR = new THREE.Color(0xffe3a6);
+// the halo's own texture: broad and even (GLOW is bright only at its centre, which the lantern itself hides)
+const HALO = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, 'rgba(255,255,255,0.85)'); grd.addColorStop(0.3, 'rgba(255,255,255,0.6)');
+  grd.addColorStop(0.6, 'rgba(255,255,255,0.2)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
 function removeLantern(L) {
   lanternGroup.remove(L.group); lanternGroup.remove(L.refl);
   L.mat.dispose(); L.glow.material.dispose(); L.refl.material.dispose();
+  if (L.halo) L.halo.material.dispose();
+  if (L.motes) L.motes.forEach((m) => m.material.dispose());
   L.group.children[0].geometry.dispose();
   lanterns.splice(lanterns.indexOf(L), 1);
 }
@@ -476,7 +492,7 @@ function populate() {
     const color = pickColor();
     if (mode === 'water') {
       const [x, z] = randomLakePoint();
-      makeLantern({ id, text: msgs[i], color, mode, x, y: 0, z, hearts: 1 + Math.floor(rng() * 14) });
+      makeLantern({ id, text: msgs[i], color, mode, x, y: 0, z, hearts: Math.floor(Math.pow(rng(), 2.4) * 11) });
     } else {
       const [x, z] = randomLakePoint(0.9, -15);
       makeLantern({ id, text: msgs[i], color, mode, x, y: rr(4, 90), z, hearts: 1 + Math.floor(rng() * 14) });
@@ -489,7 +505,7 @@ function populate() {
     const mode = i % 2 ? 'sky' : 'water';
     const color = pickColor();
     const [x, z] = randomLakePoint(0.9, mode === 'sky' ? -30 : -20);
-    makeLantern({ id, text: '', color, mode, x, y: mode === 'sky' ? rr(10, 120) : 0, z, hearts: Math.floor(rng() * 6) });
+    makeLantern({ id, text: '', color, mode, x, y: mode === 'sky' ? rr(10, 120) : 0, z, hearts: Math.floor(Math.pow(rng(), 3) * 6) });
   }
   for (const m of save.mine) {
     if (save.hidden.includes(m.id)) continue;
@@ -679,12 +695,41 @@ function updateLanterns(dt) {
     const dc = L.held ? 9 : Math.hypot(L.x - camera.position.x, L.y + 0.4 - camera.position.y, L.z - camera.position.z);
     const near = Math.max(0, Math.min(1, (dc - 1.6) / 2.4));
     L.mat.opacity = 0.96 * L.alpha * near;
-    L.glow.material.opacity = 0.8 * flick * L.alpha * Math.min(1.6, sel) * near;
-    L.glow.scale.setScalar((L.mode === 'water' ? 3.4 : 3.6) * sel * fresh);
+    // loved lanterns burn brighter: a bigger, stronger glow, a lighter paper, and from about 4 ♡ a soft golden
+    // halo that breathes; a new heart brightens it over a second or two
+    L.love += (loveOf(L.hearts + (L.liked ? 1 : 0)) - L.love) * Math.min(1, dt * 1.5);
+    const lv = L.love;
+    L.mat.color.setScalar(1 + 0.4 * lv);
+    L.glow.material.opacity = Math.min(1, 0.8 * flick * (1 + 0.45 * lv)) * L.alpha * Math.min(1.6, sel) * near;
+    L.glow.scale.setScalar((L.mode === 'water' ? 3.4 : 3.6) * sel * fresh * (1 + 0.6 * lv));
+    const hk = Math.max(0, (lv - 0.3) / 0.7);          // halo from 2 ♡, full at 12
+    if (hk > 0.01 && !L.halo) {
+      L.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: HALO, color: HALO_COLOR, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0 }));
+      L.halo.position.y = 0.8; L.group.add(L.halo);
+    }
+    if (L.halo) {
+      const breathe = 0.5 + 0.5 * Math.sin(T * 1.6 + L.ph);
+      L.halo.material.opacity = Math.min(1, hk * (0.62 + 0.25 * breathe)) * L.alpha * near;
+      L.halo.scale.setScalar((L.mode === 'water' ? 3.0 : 3.1) * (0.94 + 0.1 * breathe) * (0.8 + 0.35 * hk));
+    }
+    // the most loved (about 7 ♡ and up): a few golden motes drift up around it
+    const mk = Math.max(0, (lv - 0.75) / 0.25);
+    if (mk > 0.01 && !L.motes) {
+      L.motes = [];
+      for (let i = 0; i < 4; i++) {
+        const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: HALO_COLOR, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0 }));
+        m.scale.setScalar(0.6); L.group.add(m); L.motes.push(m);
+      }
+    }
+    if (L.motes) L.motes.forEach((m, i) => {
+      const u = (T * 0.32 + i / 4 + L.ph) % 1, a = i * 1.57 + T * 0.6 + L.ph;
+      m.position.set(Math.cos(a) * 0.6, 0.6 + u * 2.4, Math.sin(a) * 0.6);
+      m.material.opacity = mk * Math.sin(u * Math.PI) * 0.95 * L.alpha * near;
+    });
     if (L.mode === 'water') {
       L.refl.position.set(L.x, -2.2, L.z);
       L.refl.scale.set(3.2 + Math.sin(T * 2 + L.ph) * 0.4, 8, 1);
-      L.refl.material.opacity = 0.6 * flick * L.alpha;
+      L.refl.material.opacity = 0.6 * flick * L.alpha * (1 + 0.6 * lv);
     } else {
       L.refl.position.set(L.x, -L.y - 0.5, L.z);
       L.refl.scale.set(3.4, 6, 1);
@@ -1083,6 +1128,7 @@ function openCard(L) {
   if (selected) selected.selected = 0;
   selected = L; L.selected = 1;
   $('cardWho').textContent = L.mine ? '내가 띄운 등불' : L.who ? `${L.who}님의 등불` : '누군가의 등불';
+  if (L.hearts + (L.liked ? 1 : 0) >= 5) $('cardWho').textContent += ' · ✨ 많은 마음이 닿은 등불';
   const m = $('cardMsg');
   if (L.text) { m.textContent = L.text; m.style.fontStyle = 'normal'; m.style.opacity = 1; }
   else { m.textContent = '말없이 띄운 등불이에요\n그 마음도 닿기를'; m.style.whiteSpace = 'pre-line'; m.style.opacity = 0.75; }
@@ -1108,7 +1154,7 @@ function closeCard() {
 $('heartBtn').onclick = () => {
   if (!selected) return;
   if (!save.hearted.includes(selected.id)) {
-    save.hearted.push(selected.id); save.hearts++;
+    save.hearted.push(selected.id); save.hearts++; selected.liked = true;
     persist(); updateStats(); refreshHeart();
     burst(selected); audio.chime([783.99, 987.77, 1174.66]);
     const hid = selected.mine ? net.netIdFor(selected.id) || selected.id : selected.id;
@@ -1442,6 +1488,8 @@ let frozen = false;
 window.__studio.freeze = (on = true) => { frozen = on; };
 window.__studio.advance = (ms) => { for (let i = 0, n = Math.round(ms / (1000 / 60)); i < n; i++) { update(1 / 60); render(1 / 60); } };
 window.__studio.fakeArrival = (mode = 'sky', text = 'test', color = 'amber', who = 'tester') => { net.hooks.onLantern({ netId: 'x:' + Date.now(), text, color, mode }, who, true); return lanterns[lanterns.length - 1].id; };
+window.__studio.place = (id, x, z, hearts, color = 'amber', mode = 'water') => { makeLantern({ id, text: 'demo', color, mode, x, y: mode === 'sky' ? 3 : 0, z, hearts }); return id; };
+window.__studio.loveInfo = (id) => { const L = lanterns.find(l => l.id === id); return L && { hearts: L.hearts, love: +L.love.toFixed(2), halo: L.halo && { op: +L.halo.material.opacity.toFixed(2), sc: +L.halo.scale.x.toFixed(2), vis: L.halo.visible }, glow: +L.glow.material.opacity.toFixed(2), glowSc: +L.glow.scale.x.toFixed(2), motes: !!L.motes, alpha: L.alpha }; };
 window.__studio.openId = (id) => { const L = lanterns.find(l => l.id === id); if (L) openCard(L); return !!L; };
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];

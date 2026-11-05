@@ -1,0 +1,40 @@
+# Every push to main also redeploys the Cloudflare Worker (the game at wish-lanterns.ycyeom.workers.dev and
+# the lake server). Needs the repository secret CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers" template);
+# without it the job is skipped, so GitHub Pages keeps deploying as before.
+name: Deploy to Cloudflare
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: cloudflare
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - name: No token yet
+        if: env.HAS_TOKEN != 'true'
+        run: echo "CLOUDFLARE_API_TOKEN is not set; skipping the Cloudflare deploy."
+      - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_TOKEN == 'true'
+        with:
+          node-version: 20
+          cache: npm
+      - name: Build the game
+        if: env.HAS_TOKEN == 'true'
+        run: npm ci && npm run build
+      - name: Install the server tools
+        if: env.HAS_TOKEN == 'true'
+        working-directory: server
+        run: npm ci
+      - name: Deploy the Worker
+        if: env.HAS_TOKEN == 'true'
+        working-directory: server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy

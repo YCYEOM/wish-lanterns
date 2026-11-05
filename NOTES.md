@@ -176,3 +176,14 @@ https://ycyeom.github.io/wish-lanterns/
   `DEFAULT_SERVER` (config.js) and push, so the GitHub Pages copy uses the server too.
 - Tests: `.studio/server.mjs` (needs `cd server && npm run dev`): 2 walkers, kneel, lantern, leave, heart while
   away, latecomer finds the lantern, away-heart toast, 11th socket sent on. `.studio/fallback.mjs`: dead server → P2P.
+
+## Loved lanterns glow
+- `loveOf(hearts)` 0..1 (log scale: 1 ♡ .27, 3 .54, 5 .7, 12+ 1), counting your own heart (`L.liked`); `L.love`
+  eases toward it so a new heart visibly brightens the lantern. Glow bigger/stronger, paper lighter, reflection
+  brighter; from 2 ♡ a breathing golden halo (own broad HALO texture, raised so the water does not cut it);
+  from ~7 ♡ four golden motes drift up. Card adds "✨ 많은 마음이 닿은 등불" at 5+. Virtual lanterns now start
+  with mostly few hearts so the loved ones stand out. Proof: `.studio/love.mjs` (0 / 2 / 5 / 12 in a row).
+
+## Auto deploy
+- `.github/workflows/pages.yml` → GitHub Pages; `.github/workflows/cloudflare.yml` → `wrangler deploy` of server/
+  (game + lake server) on every push to main, once the repo secret CLOUDFLARE_API_TOKEN exists (skipped otherwise).
