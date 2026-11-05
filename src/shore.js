@@ -165,9 +165,11 @@ const LIGHT_GLSL = /* glsl */`
     // the stone lanterns and candle cairns along the beach: warm pools on the sand around each
     for (int i = 0; i < 20; i++) {
       vec4 Lp = lamps[i]; if (Lp.w <= 0.0) continue;
-      vec3 tl = Lp.xyz - W; float dl = length(tl);
-      float fl = 0.88 + 0.12 * sin(time * (5.3 + float(i)) + float(i) * 2.1) * sin(time * 1.9 + float(i));
+      vec3 tl = Lp.xyz - W; float dl2 = dot(tl, tl);
       float fall = Lp.w > 0.7 ? 0.075 : 0.2;
+      if (dl2 * fall > 7.0) continue;                 // out of this lamp's reach (< 0.1 % of its light): skip the work
+      float dl = sqrt(dl2);
+      float fl = 0.88 + 0.12 * sin(time * (5.3 + float(i)) + float(i) * 2.1) * sin(time * 1.9 + float(i));
       lit += col * vec3(1.55, 0.74, 0.30) * exp(-dl * dl * fall) * Lp.w * fl * smoothstep(0.35, 1.1, dl) * (0.35 + 0.65 * max(dot(N, tl / max(dl, 1e-3)), 0.0));
     }
     return lit;

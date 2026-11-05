@@ -187,3 +187,12 @@ https://ycyeom.github.io/wish-lanterns/
 ## Auto deploy
 - `.github/workflows/pages.yml` → GitHub Pages; `.github/workflows/cloudflare.yml` → `wrangler deploy` of server/
   (game + lake server) on every push to main, once the repo secret CLOUDFLARE_API_TOKEN exists (skipped otherwise).
+
+## Performance (Windows stutter report)
+- GPU-bound, not CPU (frame JS ~2.5 ms). Fixes: no preserveDrawingBuffer (extra copy per frame on ANGLE-D3D);
+  water reflection uses a 3-octave sky (`SKY_LOW` → `fbm3`); sand lighting skips lamps out of reach;
+  adaptive resolution (`adaptRes`): counts frames that miss the screen refresh (>1.5× shortest interval), steps the
+  pixel ratio down ×0.9 when >12 % miss (min 0.6), back up ×1.08 after ~6 s smooth, never above a step that failed;
+  ignores the first seconds (shader warm-up). Desktop max ratio 1.5. `window.__fixedRes = true` (or `?fixed` in
+  .studio/prof.mjs) turns it off for measurement / the reel recorder.
+- Mac proof (.studio/prof.mjs, prof-hi.mjs): 1080p p95 26.7 → 14.2 ms; 4K-class fixed 30 fps → adaptive 60 fps at 2720x1530.

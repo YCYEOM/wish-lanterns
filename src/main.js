@@ -39,8 +39,38 @@ function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 
 // ---------------------------------------------------------------- renderer / scene
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// no preserveDrawingBuffer: the studio reads the canvas in the same turn it draws, and keeping the buffer costs
+// an extra copy every frame (notably on Windows / ANGLE-D3D)
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+// adaptive resolution: the shaders here are per-pixel heavy (sky, water reflection, lit sand), so a weak GPU
+// (a Windows laptop's integrated graphics at 125-150 % scaling) renders fewer pixels instead of stuttering.
+// Starts at the screen's ratio (max 2, desktop max 1.5), steps down while frames miss the screen's refresh,
+// back up after a few smooth seconds.
+const RES_MAX = Math.min(window.devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 2 : 1.5);
+const RES_MIN = Math.min(RES_MAX, 0.6);
+let resScale = RES_MAX, resT = 0, resN = 0, resSlow = 0, resGood = 0, vsync = 1 / 60;
+let resCeil = RES_MAX, resWarm = 2, resLastUp = false;
+renderer.setPixelRatio(resScale);
+// judged by missed refreshes, not the average: a frame that takes two refreshes is the visible hitch
+function adaptRes(dt) {
+  if (window.__fixedRes || document.hidden || dt <= 0 || dt > 0.25) return;
+  vsync = Math.min(vsync * 1.002, Math.max(1 / 240, dt));      // the screen's refresh: the shortest interval seen
+  resT += dt; resN++; if (dt > vsync * 1.5) resSlow++;
+  if (resT < 1.2) return;                                         // judge over about a second
+  const slow = resSlow / resN; resT = 0; resN = 0; resSlow = 0;
+  if (resWarm > 0) { resWarm--; return; }                         // loading hitches are not the steady state
+  let next = resScale;
+  if (slow > 0.12 && resScale > RES_MIN) {
+    if (resLastUp) resCeil = Math.max(RES_MIN, resScale * 0.97);  // that step up was too far: stay under it
+    next = Math.max(RES_MIN, resScale * 0.9); resGood = 0;
+  } else if (slow < 0.02) {
+    if (++resGood >= 5 && resScale < resCeil) { next = Math.min(resCeil, resScale * 1.08); resGood = 0; }
+  } else resGood = 0;
+  if (Math.abs(next - resScale) > 0.01) {
+    resLastUp = next > resScale; resScale = next; resWarm = 1;
+    renderer.setPixelRatio(resScale); resize();
+  } else resLastUp = false;
+}
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
@@ -73,6 +103,13 @@ float noise3(vec3 p){
              mix(mix(hash13(i+vec3(0,0,1)), hash13(i+vec3(1,0,1)), f.x), mix(hash13(i+vec3(0,1,1)), hash13(i+vec3(1,1,1)), f.x), f.y), f.z);
 }
 float fbm(vec3 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++){ s += a*noise3(p); p *= 2.03; a *= 0.5; } return s; }
+// three octaves: what the rippled reflection of the sky needs (its fine detail is broken up by the waves anyway)
+float fbm3(vec3 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++){ s += a*noise3(p); p *= 2.03; a *= 0.5; } return s + 0.125; }
+#ifdef SKY_LOW
+#define SKYFBM fbm3
+#else
+#define SKYFBM fbm
+#endif
 vec3 skyColor(vec3 dir, float t, float starAmt){
   float h = clamp(dir.y, 0.0, 1.0);
   // the night deepens: the dusk glow sinks away, the zenith darkens, the stars come out stronger
@@ -87,8 +124,8 @@ vec3 skyColor(vec3 dir, float t, float starAmt){
   vec3 bn = normalize(vec3(0.62, 0.30, 0.72));
   float bd = dot(dir, bn);
   float band = exp(-bd*bd / 0.025) * smoothstep(0.0, 0.25, h);
-  float n = fbm(dir * 5.0);
-  float n2 = fbm(dir * 16.0 + 3.0);
+  float n = SKYFBM(dir * 5.0);
+  float n2 = SKYFBM(dir * 16.0 + 3.0);
   col += vec3(0.15, 0.13, 0.26) * band * smoothstep(0.30, 0.85, n) * (1.3 + 0.6 * nightK);
   col += vec3(0.20, 0.12, 0.10) * band * smoothstep(0.60, 0.95, n) * 0.6;
   col *= 1.0 - 0.45 * band * smoothstep(0.52, 0.72, n2);
@@ -96,7 +133,7 @@ vec3 skyColor(vec3 dir, float t, float starAmt){
   float cl = 0.0;
   if (cloudK > 0.001) {
     vec3 cd = vec3(dir.x, dir.y * 2.6, dir.z) * 2.2 + vec3(t * 0.006, 0.0, t * 0.003);
-    float cn = fbm(cd) * 0.75 + fbm(cd * 2.7 + 5.0) * 0.25;
+    float cn = SKYFBM(cd) * 0.75 + SKYFBM(cd * 2.7 + 5.0) * 0.25;
     cl = smoothstep(0.62 - 0.44 * cloudK, 0.86 - 0.26 * cloudK, cn) * smoothstep(-0.02, 0.06, h);
     cl = min(1.0, cl * (0.45 + 0.75 * cloudK) + cloudK * (0.22 + 0.3 * smoothstep(0.7, 1.0, cloudK)) * (1.0 - 0.5 * smoothstep(0.0, 0.6, h)));
     col *= 1.0 - 0.6 * cl * band;
@@ -164,7 +201,8 @@ scene.add(sky);
 const water = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400, 1, 1), new THREE.ShaderMaterial({
   uniforms, depthWrite: false, fog: false,
   vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-  fragmentShader: `uniform float time; uniform vec3 camPos; varying vec3 vW; ${GLSL_COMMON}
+  fragmentShader: `#define SKY_LOW
+    uniform float time; uniform vec3 camPos; varying vec3 vW; ${GLSL_COMMON}
     void main(){
       vec3 v = normalize(camPos - vW);
       vec2 p = vW.xz; float t = time;
@@ -1366,6 +1404,7 @@ window.addEventListener('keydown', (e) => {
 let running = true;
 let last = performance.now();
 function frame(now) {
+  adaptRes((now - last) / 1000);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (frozen) { requestAnimationFrame(frame); return; }
   if (running) update(dt);
