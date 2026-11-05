@@ -23,6 +23,20 @@ const SCALE = 1.22;
 
 function tag(o, t) { o.userData.tag = t; return o; }
 
+// little actions (emotes): one-shot gestures with how long they last, and sitting (held until you move)
+export const EMOTES = { wave: 2.2, bow: 1.8, jump: 1.25, heart: 2.4 };
+// a small emoji that floats up over the head for each gesture, drawn once per emoji
+const EMOJI = { wave: '👋', bow: '🙇', jump: '🎉', heart: '💕' };
+const emojiTex = {};
+function emojiTexture(ch) {
+  if (emojiTex[ch]) return emojiTex[ch];
+  const c = document.createElement('canvas'); c.width = c.height = 96;
+  const g = c.getContext('2d'); g.font = '72px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(ch, 48, 54);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return (emojiTex[ch] = t);
+}
+
 // opts.remote: another player's character (no scene lights of its own, a scarf colour of its own)
 export function createWalker(scene, shore, glowTex, opts = {}) {
   const { LAKE, groundY, walkable, waterDist } = shore;
@@ -206,6 +220,10 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
   // launch ceremony: kneel to set a lantern on the water, or lift it overhead for the sky
   // { mode, t, dur } while running; poses come from the two eased amounts below
   let cer = null, kneel = 0, lift = 0;
+  // emotes: { kind, t, dur } while one runs; sitting eases in and out through sitAmt
+  let emo = null, sitting = false, sitAmt = 0;
+  const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, opacity: 0 }));
+  bubble.scale.setScalar(0.62); bubble.visible = false; bubble.renderOrder = 5; root.add(bubble);
   const CER = { water: { dur: 3.6, release: 1.7 }, sky: { dur: 3.0, release: 1.35 } };
   const smooth = (a, b, t) => { const x = Math.max(0, Math.min(1, (t - a) / (b - a))); return x * x * (3 - 2 * x); };
 
@@ -285,9 +303,51 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       legR.rotation.x = legR.rotation.x * (1 - kneel) - 0.15 * kneel + lean; legR.userData.knee.rotation.x = -1.45 * kneel;
     }
 
+    // emotes on top of everything else
+    sitAmt += ((sitting ? 1 : 0) - sitAmt) * Math.min(1, dt * 3.5);
+    let wave = 0, bow = 0, heart = 0, jump = 0, hopY = 0;
+    if (emo) {
+      emo.t += dt;
+      const t = emo.t, D = emo.dur, env = smooth(0, 0.3, t) * (1 - smooth(D - 0.35, D, t));
+      if (emo.kind === 'wave') wave = env;
+      else if (emo.kind === 'heart') heart = env;
+      else if (emo.kind === 'bow') bow = smooth(0, 0.45, t) * (1 - smooth(D - 0.7, D, t));
+      else if (emo.kind === 'jump') { jump = env; hopY = t < 1.1 ? Math.sin(Math.PI * ((t % 0.55) / 0.55)) : 0; }
+      // the emoji floats up and fades
+      bubble.visible = true;
+      bubble.position.y = 2.05 + Math.min(1, t / D) * 0.45 + hopY * 0.38;
+      bubble.material.opacity = smooth(0, 0.2, t) * (1 - smooth(D - 0.5, D, t));
+      if (t >= D) { emo = null; bubble.visible = false; }
+    }
+    const mix = (a, b, k) => a + (b - a) * k;
+    if (sitAmt > 0.001) {                 // sit on the sand: legs out in front, a hand behind, looking up at the sky
+      raise *= 1 - sitAmt;
+      legL.rotation.x = mix(legL.rotation.x, 1.45, sitAmt); legR.rotation.x = mix(legR.rotation.x, 1.32, sitAmt);
+      legL.userData.knee.rotation.x = mix(legL.userData.knee.rotation.x, -0.35, sitAmt);
+      legR.userData.knee.rotation.x = mix(legR.userData.knee.rotation.x, -0.15, sitAmt);
+      armL.rotation.x = mix(armL.rotation.x, -0.55, sitAmt); armL.rotation.z = mix(armL.rotation.z, -0.45, sitAmt);
+    }
+    if (wave > 0) {                       // the free hand up, waving side to side
+      armL.rotation.x = mix(armL.rotation.x, 2.75, wave);
+      armL.rotation.z = mix(armL.rotation.z, -0.35 + Math.sin(T * 11) * 0.38, wave);
+    }
+    if (heart > 0) {                      // both arms over the head, hands meeting: a heart
+      armL.rotation.x = mix(armL.rotation.x, 2.7, heart); armL.rotation.z = mix(armL.rotation.z, 0.62, heart);
+      armR.rotation.x = mix(armR.rotation.x, 2.7, heart); armR.rotation.z = mix(armR.rotation.z, -0.62, heart);
+    }
+    if (jump > 0) {                       // two happy hops, arms flung up
+      armL.rotation.x = mix(armL.rotation.x, 2.5, jump); armL.rotation.z = mix(armL.rotation.z, -0.7, jump);
+      armR.rotation.x = mix(armR.rotation.x, 2.2, jump);
+      const tuck = hopY * jump * 0.5;
+      legL.rotation.x += tuck; legR.rotation.x += tuck;
+      legL.userData.knee.rotation.x -= tuck * 1.6; legR.userData.knee.rotation.x -= tuck * 1.6;
+    }
+    if (bow > 0) { armL.rotation.x = mix(armL.rotation.x, 0.25, bow); armL.rotation.z = mix(armL.rotation.z, 0.1, bow); }
+    fig.position.y = hopY * 0.38;
+
     // body: bob twice per stride, roll into turns, lean into speed, breathe when still
-    body.position.y = 0.5 + Math.abs(c) * 0.055 * w + breathe * 0.008 - kneel * 0.26 + lift * 0.03;
-    body.rotation.x = -0.12 * w - Math.max(-0.1, Math.min(0.1, aFwd * 0.012)) - kneel * 0.35 + lift * 0.08;
+    body.position.y = 0.5 + Math.abs(c) * 0.055 * w + breathe * 0.008 - kneel * 0.26 + lift * 0.03 - sitAmt * 0.36;
+    body.rotation.x = -0.12 * w - Math.max(-0.1, Math.min(0.1, aFwd * 0.012)) - kneel * 0.35 + lift * 0.08 - bow * 0.75 + sitAmt * 0.12;
     body.rotation.z = s * 0.04 * w - Math.max(-0.25, Math.min(0.25, turnRate * 0.05)) * w;
     body.rotation.y = s * 0.08 * w;
     mantle.scale.y = 0.55 + breathe * 0.02;
@@ -296,9 +356,9 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     const gl = Math.sin(T * 0.37) * 0.55 + Math.sin(T * 0.91 + 1.3) * 0.18;
     const up = Math.max(0, Math.sin(T * 0.23 + 0.6)) * 0.35;
     head.rotation.y = (gl * (1 - w) - body.rotation.y * 0.8);
-    head.rotation.x = ((-up * (1 - w) + 0.06 * w) + breathe * 0.02) * (1 - kneel - lift) + kneel * 0.15 - lift * 0.55;
+    head.rotation.x = ((-up * (1 - w) + 0.06 * w) + breathe * 0.02) * (1 - kneel - lift) + kneel * 0.15 - lift * 0.55 + bow * 0.3 - sitAmt * 0.32 - heart * 0.15 - jump * 0.2;
     head.rotation.y *= 1 - kneel - lift;
-    head.rotation.z = -body.rotation.z * 0.6;
+    head.rotation.z = -body.rotation.z * 0.6 + wave * Math.sin(T * 3) * 0.12;
 
     // lantern pendulum: a damped spring the hand's motion and acceleration excite
     staff.rotation.z = -0.95 - armR.rotation.z;   // tip points out to the side and up
@@ -337,6 +397,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       pos.set(x, groundY(x, z), z); yaw = Math.atan2(-lakeDir().x, -lakeDir().z);
       vel.x = vel.z = 0; lastVx = lastVz = 0; turnRate = 0; swing = swingV = 0; walkAmt = 0; flareS = 0; raise = 0; idleT = 0;
       target = null; onArrive = null; cam.init = false; cam.boom = undefined; moving = false; cer = null; kneel = lift = 0;
+      emo = null; sitting = false; sitAmt = 0; bubble.visible = false; fig.position.y = 0;
       view.yaw = view.pitch = view.wYaw = view.wPitch = 0;
     },
     // start the launch pose; returns its timing { dur, release } (seconds)
@@ -344,8 +405,22 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       target = null; onArrive = null; vel.x = vel.z = 0;
       const d = lakeDir(); yaw = Math.atan2(-d.x, -d.z);
       cer = { mode: mode === 'sky' ? 'sky' : 'water', t: 0 };
+      emo = null; sitting = false; bubble.visible = false;
       return CER[cer.mode];
     },
+    // a little action: 'wave' | 'bow' | 'jump' | 'heart' (one-shot), or 'sit' (toggles; moving stands up again)
+    emote(kind) {
+      if (cer) return false;
+      if (kind === 'sit') { sitting = !sitting; emo = null; bubble.visible = false; target = null; onArrive = null; return true; }
+      if (!EMOTES[kind]) return false;
+      sitting = false;
+      emo = { kind, t: 0, dur: EMOTES[kind] };
+      bubble.material.map = emojiTexture(EMOJI[kind]); bubble.material.needsUpdate = true;
+      return true;
+    },
+    setSitting(on) { if (!cer && sitting !== !!on) { sitting = !!on; if (on) emo = null; } },
+    get sitting() { return sitting; },
+    get emoting() { return emo ? emo.kind : null; },
     busy() { return !!cer; },
     // world point between the two hands (where a lantern being set down or lifted is held)
     hands(out = new THREE.Vector3()) {
@@ -358,6 +433,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     get timing() { return cer && { t: cer.t, ...CER[cer.mode] }; },
     walkTo(x, z, cb) {
       // clamp the goal onto the beach: step it back toward the character until it is walkable
+      if (Math.hypot(x - pos.x, z - pos.z) > 0.3) sitting = false;   // walking off stands up
       let gx = x, gz = z;
       for (let i = 0; i < 40 && !walkable(gx, gz); i++) { gx += (pos.x - gx) * 0.12; gz += (pos.z - gz) * 0.12; }
       target = { x: gx, z: gz }; onArrive = cb || null;
@@ -381,7 +457,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       if (keys.has('KeyD') || keys.has('ArrowRight')) { ix += rx; iz += rz; }
       if (keys.has('KeyA') || keys.has('ArrowLeft')) { ix -= rx; iz -= rz; }
       if (cer) ix = iz = 0;
-      if (ix || iz) { target = null; onArrive = null; }
+      if (ix || iz) { target = null; onArrive = null; sitting = false; }
       else if (target) {
         const dx = target.x - pos.x, dz = target.z - pos.z, l = Math.hypot(dx, dz);
         if (l < 0.15) { const cb = onArrive; target = null; onArrive = null; if (cb) cb(); }
@@ -450,7 +526,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     },
     state() {
       const d = waterDist(pos.x, pos.z);
-      return { x: +pos.x.toFixed(2), z: +pos.z.toFixed(2), yaw: +yaw.toFixed(3), moving, nearWater: d < NEAR_WATER, waterDist: +d.toFixed(2) };
+      return { x: +pos.x.toFixed(2), z: +pos.z.toFixed(2), yaw: +yaw.toFixed(3), moving, nearWater: d < NEAR_WATER, waterDist: +d.toFixed(2), sitting, emote: emo ? emo.kind : null };
     },
     NEAR_WATER,
     // take this character out of the world (another player left)

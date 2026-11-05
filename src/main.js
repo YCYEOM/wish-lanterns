@@ -887,7 +887,7 @@ function update(dt) {
   updateSparks(dt);
   updateStar(dt);
   for (const r of others.values()) r.w.update(dt, NO_KEYS, T);
-  if (screen !== 'title') net.sendPos(walker.pos.x, walker.pos.z, null, myScarf);
+  if (screen !== 'title') net.sendPos(walker.pos.x, walker.pos.z, null, myScarf, walker.sitting);
   atmos.update(dt);
   scene.fog.density = 0.0042 + uniforms.fogK.value * 0.0095;
   scene.fog.color.copy(FOG_NIGHT).lerp(FOG_MIST, uniforms.fogK.value);
@@ -1002,8 +1002,9 @@ const netHooks = {
     }
     if (Math.hypot(d.x - r.w.pos.x, d.z - r.w.pos.z) > 8) r.w.reset(d.x, d.z);   // jumped (reload, another path): no long walk
     if (d.cer && !r.w.busy()) r.w.ceremony(d.cer);
-    else if (!d.cer) r.w.walkTo(d.x, d.z);
+    else if (!d.cer) { r.w.walkTo(d.x, d.z); r.w.setSitting(!!d.sit); }
   },
+  onEmote(id, k) { const r = others.get(id); if (r) r.w.emote(k); },
   onWish(slot, h) { otherWish(slot, h); },
   onLeave(id) { const r = others.get(id); if (r) { r.w.dispose(); others.delete(id); } },
   onStatus(msg) { toast(msg, 4000); },
@@ -1234,6 +1235,17 @@ $('invite').onclick = async () => {
 };
 // today's topic: tapping it puts it in the line as a start
 $('topic').onclick = () => { const m = $('msg'); if (!m.value.trim()) { m.value = topicToday() + ' '; onMsgInput(); } m.focus(); audio.tick(); };
+// little actions: 👋 wave, 🙇 bow, 🎉 jump, 💕 heart, 🪑 sit (also keys 1-5); others on the lake see them too
+const EMOTE_KEYS = ['wave', 'bow', 'jump', 'heart', 'sit'];
+function doEmote(k) {
+  audio.start();
+  if (!walker.emote(k)) return;
+  if (k === 'sit') net.sendPos(walker.pos.x, walker.pos.z, null, myScarf, walker.sitting);
+  else net.sendEmote && net.sendEmote(k);
+  $('emoteBar').classList.add('hidden'); audio.tick();
+}
+$('emoteBtn').onclick = (e) => { e.stopPropagation(); audio.start(); $('emoteBar').classList.toggle('hidden'); audio.tick(); };
+document.querySelectorAll('#emoteBar [data-emote]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); doEmote(b.dataset.emote); });
 // background music, remembered between visits: 🎵 opens a small panel with an on/off switch, a mood and sliders
 const SLIDERS = [
   { id: 'vol', label: '음악 크기', min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
@@ -1349,6 +1361,7 @@ function tapAt(cx, cy) {
 canvas.addEventListener('pointerdown', (e) => {
   if (screen === 'title') { startGame(); return; }
   if (screen === 'compose') { closePanel('compose'); return; }
+  $('emoteBar').classList.add('hidden');
   if (screen === 'diary') { closePanel('diary'); return; }
   if (screen === 'music') { closePanel('music'); return; }
   if (press) return;                                   // a second finger: ignore
@@ -1408,6 +1421,7 @@ window.addEventListener('keydown', (e) => {
   if (MOVE_KEYS.has(e.code)) { keys.add(e.code); if (e.code.startsWith('Arrow')) e.preventDefault(); }
   if (TURN_KEYS.has(e.code)) keys.add(e.code);
   if (e.code === 'KeyR' && screen !== 'title') walker.turnView(null);
+  if ((screen === 'lake' || screen === 'card') && /^Digit[1-5]$/.test(e.code) && !e.repeat) doEmote(EMOTE_KEYS[+e.code.slice(5) - 1]);
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());

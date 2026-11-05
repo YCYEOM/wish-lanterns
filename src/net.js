@@ -98,7 +98,13 @@ export class Net {
       this.sendPosAction.onMessage = (d, meta) => {
         const id = meta && meta.peerId;
         if (room !== this.room || !id || !d || !isFinite(d.x) || !isFinite(d.z) || Math.abs(d.x) > 400 || Math.abs(d.z) > 400) return;
-        this.hooks.onPos && this.hooks.onPos(id, { x: +d.x, z: +d.z, cer: d.cer === 'water' || d.cer === 'sky' ? d.cer : null, s: d.s | 0 });
+        this.hooks.onPos && this.hooks.onPos(id, { x: +d.x, z: +d.z, cer: d.cer === 'water' || d.cer === 'sky' ? d.cer : null, s: d.s | 0, sit: !!d.sit });
+      };
+      this.sendEmoteAction = room.makeAction('emote');
+      this.sendEmoteAction.onMessage = (d, meta) => {
+        const id = meta && meta.peerId;
+        if (room !== this.room || !id || !d || typeof d.k !== 'string' || d.k.length > 10) return;
+        this.hooks.onEmote && this.hooks.onEmote(id, d.k);
       };
       this.sendLanterns.onMessage = (data, meta) => { if (room === this.room) this.receiveLanterns(data, meta && meta.peerId); };
       this.sendHeartAction.onMessage = (data) => {
@@ -161,13 +167,15 @@ export class Net {
   sendWish(slot, h) { if (this.sendWishAction && this.peers > 0) { try { this.sendWishAction.send({ s: slot, h }); } catch {} } }
 
   // share where we stand: when we move more than a step, start a launch pose, or every few seconds anyway
-  sendPos(x, z, cer, scarf) {
+  sendEmote(k) { if (this.sendEmoteAction && this.peers > 0) { try { this.sendEmoteAction.send({ k }); } catch {} } }
+  sendPos(x, z, cer, scarf, sit = false) {
     if (!this.sendPosAction || this.peers === 0) return;
     const t = Date.now(), L = this.lastPos;
-    if (L && !cer && Math.hypot(x - L.x, z - L.z) < 0.25 && t - L.t < 3000) return;
-    if (L && !cer && t - L.t < 200) return;
-    this.lastPos = { x, z, t };
-    try { this.sendPosAction.send({ x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: scarf }); } catch {}
+    const sitChanged = L && L.sit !== !!sit;
+    if (!sitChanged && L && !cer && Math.hypot(x - L.x, z - L.z) < 0.25 && t - L.t < 3000) return;
+    if (!sitChanged && L && !cer && t - L.t < 200) return;
+    this.lastPos = { x, z, t, sit: !!sit };
+    try { this.sendPosAction.send({ x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: scarf, sit: sit ? 1 : 0 }); } catch {}
   }
 
   statusLine() {

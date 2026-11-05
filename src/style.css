@@ -202,3 +202,16 @@ body.hud-off #netline { display: none; }
 .mp-reset { margin-top: 8px; width: 100%; }
 @media (max-width: 520px) { .music-panel { top: 56px; } .mp-row { grid-template-columns: 84px 1fr 44px; } }
 @media (max-height: 520px) { .music-panel { top: 56px; padding: 10px 14px; } .mp-row { padding: 2px 0; } .mp-head { margin-bottom: 6px; } }
+
+/* little actions: a round button bottom-right, opening a row of gestures */
+.emote-btn { position: absolute; right: 18px; bottom: 34px; width: 50px; height: 50px; border-radius: 50%; font-size: 24px;
+  border: 1px solid rgba(255,220,180,.35); background: rgba(10,14,36,.7); cursor: pointer; box-shadow: 0 0 18px rgba(255,180,120,.25); }
+.emote-btn:active { transform: scale(.94); }
+.emote-bar { position: absolute; right: 14px; bottom: 94px; display: flex; flex-direction: column; gap: 6px; padding: 8px;
+  border-radius: 18px; background: rgba(14,18,44,.92); border: 1px solid rgba(255,210,160,.22); animation: mpIn .2s ease-out; }
+.emote-bar button { display: flex; align-items: center; gap: 8px; padding: 7px 12px 7px 9px; border-radius: 12px; border: none;
+  background: rgba(255,200,140,.08); color: #f6e2c6; font-size: 20px; font-family: inherit; cursor: pointer; }
+.emote-bar button span { font-size: 13px; }
+.emote-bar button:hover { background: rgba(255,200,140,.2); }
+@media (max-width: 520px) { .emote-btn { right: 12px; bottom: 30px; width: 46px; height: 46px; } .emote-bar { right: 10px; bottom: 86px; } }
+@media (max-width: 420px) { .emote-btn { bottom: 100px; } .emote-bar { bottom: 156px; } }

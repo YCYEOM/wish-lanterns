@@ -206,3 +206,10 @@ https://ycyeom.github.io/wish-lanterns/
   per-lamp light (NO_LAMPS), coarser ground mesh, a share of the scatter (pebbles/twigs/shells off), fewer
   background lanterns and weather points, falls hidden when not falling, 30 fps cap, resolution 0.45-0.5.
   SwiftShader on an M2: ~3 fps → ~15 fps (`.studio/prof-sw.mjs`, `.studio/cost.mjs sw` per-object cost).
+
+## Little actions (emotes)
+- 😊 button (bottom right) or keys 1-5: 👋 wave, 🙇 bow, 🎉 jump (two hops), 💕 heart (arms over the head),
+  🪑 sit (held until you walk). One-shots float their emoji over the head. walker.js `emote(kind)`, `setSitting`.
+- Sync: one-shots as `{t:'e',k}` (server, 0.7 s rate limit; P2P action 'emote'); sitting rides on positions (`sit`),
+  sent at once when it changes, kept by the server so a newcomer sees who is sitting. `.studio/emote.mjs` (2-3
+  clients on the local server), `.studio/emote1.mjs` (poses from the front).

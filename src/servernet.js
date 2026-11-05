@@ -89,7 +89,7 @@ export class ServerNet {
     if (!sameLake) this.hooks.onLake && this.hooks.onLake(d.lake);
     this.hooks.onPresence(this.n);
     this.lastPos = null;
-    for (const p of d.peers || []) { this.ids.add(p.id); this.hooks.onPos && this.hooks.onPos(p.id, { x: p.x, z: p.z, cer: null, s: p.s | 0 }); }
+    for (const p of d.peers || []) { this.ids.add(p.id); this.hooks.onPos && this.hooks.onPos(p.id, { x: p.x, z: p.z, cer: null, s: p.s | 0, sit: !!p.sit }); }
     for (const l of (d.lanterns || []).slice().reverse()) {
       if (!l || l.o === this.owner) continue;
       this.hooks.onLantern({ netId: `${l.o}:${l.k}`, text: l.tx || '', color: l.c, mode: l.m === 'sky' ? 'sky' : 'water', hearts: l.hearts | 0 }, '', false);
@@ -111,13 +111,14 @@ export class ServerNet {
       case 'p':
         if (!Number.isFinite(d.x) || !Number.isFinite(d.z)) return;
         this.ids.add(d.id);
-        this.hooks.onPos && this.hooks.onPos(d.id, { x: d.x, z: d.z, cer: d.cer === 'water' || d.cer === 'sky' ? d.cer : null, s: d.s | 0 });
+        this.hooks.onPos && this.hooks.onPos(d.id, { x: d.x, z: d.z, cer: d.cer === 'water' || d.cer === 'sky' ? d.cer : null, s: d.s | 0, sit: !!d.sit });
         break;
       case 'l':
         if (typeof d.o !== 'string' || typeof d.k !== 'string' || d.o === this.owner) return;
         this.hooks.onLantern({ netId: `${d.o}:${d.k}`, text: d.tx || '', color: d.c, mode: d.m === 'sky' ? 'sky' : 'water' }, '', true, d.id);
         break;
       case 'h': if (typeof d.id === 'string') this.hooks.onHeart(d.id, typeof d.h === 'string' ? d.h : null); break;
+      case 'e': if (typeof d.id === 'string' && typeof d.k === 'string') this.hooks.onEmote && this.hooks.onEmote(d.id, d.k); break;
       case 'w': if (Number.isFinite(d.s) && typeof d.h === 'string') this.hooks.onWish && this.hooks.onWish(d.s, d.h); break;
     }
   }
@@ -128,16 +129,18 @@ export class ServerNet {
   sendWish(slot, h) { if (this.n > 1) this.send({ t: 'w', s: slot, h }); }
   poll() {}
 
-  sendPos(x, z, cer, scarf) {
+  sendEmote(k) { if (this.n > 1) this.send({ t: 'e', k }); }
+  sendPos(x, z, cer, scarf, sit = false) {
     this.scarf = scarf | 0;
     if (!this.ws || this.n < 2) return;
     const t = Date.now(), L = this.lastPos;
+    if (L && L.sit !== !!sit) { this.lastPos = { x, z, t, sit: !!sit }; this.send({ t: 'p', x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: this.scarf, sit: sit ? 1 : 0 }); return; }
     // the server keeps where everyone last stood (newcomers get it on joining), so standing still needs only
     // a rare refresh; while walking ~2.5 a second is plenty, the others' characters walk smoothly to each point
     if (L && !cer && Math.hypot(x - L.x, z - L.z) < 0.25 && t - L.t < 15000) return;
     if (L && !cer && t - L.t < POS_MS) return;
-    this.lastPos = { x, z, t };
-    this.send({ t: 'p', x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: this.scarf });
+    this.lastPos = { x, z, t, sit: !!sit };
+    this.send({ t: 'p', x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: this.scarf, sit: sit ? 1 : 0 });
   }
 
   inviteUrl() {

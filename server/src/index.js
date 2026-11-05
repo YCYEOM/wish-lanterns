@@ -9,7 +9,8 @@
 //   (lantern text is tx: t is always the message type)
 //   server -> client  {t:'hi',lake,id,n,lanterns,peers,away}  {t:'full',lake}
 //                     {t:'j',id} {t:'x',id} {t:'n',n} {t:'p',id,x,z,cer,s}
-//                     {t:'l',id,o,k,tx,c,m} {t:'h',id,h} {t:'w',s,h}
+//                     {t:'l',id,o,k,tx,c,m} {t:'h',id,h} {t:'w',s,h} {t:'e',id,k}
+//   client -> server also {t:'e',k} (a gesture: wave/bow/jump/heart); 'p' carries sit (0/1)
 import { DurableObject } from 'cloudflare:workers';
 import { cleanMessage, COLORS as COLOR_LIST } from '../../src/data.js';
 
@@ -19,6 +20,7 @@ const LANTERN_TTL = 24 * 3600 * 1000;
 const HEART_TTL = 7 * 24 * 3600 * 1000;
 const LATEST = 30, LOVED = 20;          // a newcomer gets the newest lanterns and the day's most-hearted ones
 const COLORS = new Set(COLOR_LIST.map((c) => c.id));
+const GESTURES = new Set(['wave', 'bow', 'jump', 'heart']);
 
 const cors = { 'Access-Control-Allow-Origin': '*' };
 const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
@@ -92,7 +94,7 @@ export class Lake extends DurableObject {
     const since = Math.max(num(url.searchParams.get('since')) * 1000, now - HEART_TTL);
     const away = this.sql.exec('SELECT id, h FROM hearts WHERE owner = ? AND at > ? LIMIT 200', owner, since).toArray();
     const peers = [];
-    for (const ws of others) { const a = ws.deserializeAttachment(); if (a && a.x !== null) peers.push({ id: a.id, x: a.x, z: a.z, s: a.s }); }
+    for (const ws of others) { const a = ws.deserializeAttachment(); if (a && a.x !== null) peers.push({ id: a.id, x: a.x, z: a.z, s: a.s, sit: a.sit | 0 }); }
     server.send(JSON.stringify({ t: 'hi', lake: this.lake, id, n: others.length + 1, lanterns, peers, away, now }));
     this.broadcast({ t: 'j', id, n: others.length + 1 }, server);
     return new Response(null, { status: 101, webSocket: client });
@@ -120,9 +122,9 @@ export class Lake extends DurableObject {
         const x = num(d.x), z = num(d.z);
         if (Math.abs(x) > 400 || Math.abs(z) > 400) return;
         const cer = d.cer === 'water' || d.cer === 'sky' ? d.cer : 0;
-        me.x = Math.round(x * 100) / 100; me.z = Math.round(z * 100) / 100; me.cer = cer; me.s = num(d.s) | 0;
+        me.x = Math.round(x * 100) / 100; me.z = Math.round(z * 100) / 100; me.cer = cer; me.s = num(d.s) | 0; me.sit = d.sit ? 1 : 0;
         ws.serializeAttachment(me);
-        this.broadcast({ t: 'p', id: me.id, x: me.x, z: me.z, cer, s: me.s }, ws);
+        this.broadcast({ t: 'p', id: me.id, x: me.x, z: me.z, cer, s: me.s, sit: me.sit }, ws);
         return;
       }
       case 'l': {                                    // a new lantern: kept a day, sent to everyone here now
@@ -144,6 +146,12 @@ export class Lake extends DurableObject {
           if (fresh) this.sql.exec('UPDATE lanterns SET hearts = hearts + 1 WHERE o = ? AND k = ?', owner, id.slice(owner.length + 1));
         }
         this.broadcast({ t: 'h', id, h }, ws);
+        return;
+      }
+      case 'e': {                                    // a little gesture, shown to everyone here
+        if (now - (r.e || 0) < 700) return; r.e = now;
+        if (!GESTURES.has(d.k)) return;
+        this.broadcast({ t: 'e', id: me.id, k: d.k }, ws);
         return;
       }
       case 'w': {                                    // a wish on a shared shooting star
