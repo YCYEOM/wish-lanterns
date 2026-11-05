@@ -4,14 +4,22 @@
 export const MUSIC_DEFAULTS = { mood: 'calm', vol: 0.5, tempo: 0.5, notes: 0.5, key: 0, rev: 0.35, nature: 0.5 };
 // moods: four chords (one per bar) and the nine-note scale the music box wanders on (an octave below where it sounds)
 export const MOODS = {
+  // 🌙 calm: A minor, a soft sine pad and a music box wandering slowly — the original
   calm:   { chords: [[110, 130.81, 164.81], [87.31, 110, 130.81], [130.81, 164.81, 196], [98, 123.47, 146.83]],
-            scale: [220, 261.63, 293.66, 329.63, 392, 440, 523.25, 587.33, 659.25] },
+            scale: [220, 261.63, 293.66, 329.63, 392, 440, 523.25, 587.33, 659.25],
+            tempo: 1, pad: 'sine', voice: 'box', oct: 2 },
+  // 🕯️ warm: C major, a round triangle pad, a low bass on each bar and a gently picked broken chord (guitar-like)
   warm:   { chords: [[130.81, 164.81, 196], [98, 123.47, 146.83], [110, 130.81, 164.81], [87.31, 110, 130.81]],
-            scale: [196, 220, 261.63, 293.66, 329.63, 392, 440, 523.25, 587.33] },
+            scale: [196, 220, 261.63, 293.66, 329.63, 392, 440, 523.25, 587.33],
+            tempo: 0.85, pad: 'warm', voice: 'pluck', oct: 1, bass: true, arp: true },
+  // 🫧 dreamy: maj7 chords, a wide detuned pad breathing through a slow filter, a few glassy bells, very slow
   dreamy: { chords: [[87.31, 110, 130.81, 164.81], [82.41, 98, 123.47, 146.83], [73.42, 87.31, 110, 130.81], [98, 123.47, 146.83, 174.61]],
-            scale: [220, 246.94, 261.63, 329.63, 349.23, 392, 440, 493.88, 523.25] },
+            scale: [220, 246.94, 261.63, 329.63, 349.23, 392, 440, 493.88, 523.25],
+            tempo: 1.45, pad: 'wide', voice: 'bell', oct: 2, sparse: true },
+  // ✨ starry: D major, bright and high, a celesta twinkling quick figures and tiny sparkles over a light pad
   starry: { chords: [[146.83, 185, 220], [110, 138.59, 164.81], [123.47, 146.83, 185], [98, 123.47, 146.83]],
-            scale: [220, 246.94, 293.66, 329.63, 369.99, 440, 493.88, 587.33, 659.25] },
+            scale: [220, 246.94, 293.66, 329.63, 369.99, 440, 493.88, 587.33, 659.25],
+            tempo: 0.8, pad: 'sine', voice: 'celesta', oct: 4, sparkle: true, busy: true },
 };
 
 export class Audio {
@@ -110,8 +118,11 @@ export class Audio {
   }
   // change any of the music settings; levels move at once, tempo / notes / key / mood from the next bar
   setMusicCfg(cfg) {
+    const moodChanged = cfg.mood && cfg.mood !== this.cfg.mood;
     this.cfg = { ...this.cfg, ...cfg };
     if (this.ctx) this._applyCfg();
+    // a new mood starts a fresh bar now (not when the old one ends), so the change is heard at once
+    if (moodChanged && this.ctx && this.musicGain && this.musicOn) { this.bar = 0; this._musicLoop(); }
   }
   _applyCfg() {
     const t = this.ctx.currentTime, c = this.cfg;
@@ -123,34 +134,74 @@ export class Audio {
   }
   _musicLoop() {
     const ctx = this.ctx, c = this.cfg;
-    const BAR = 6.8 - 4 * c.tempo;                                // 6.8 s (slow) .. 2.8 s (lively) a bar
+    const mood = MOODS[c.mood] || MOODS.calm;
+    const BAR = (6.8 - 4 * c.tempo) * mood.tempo;                // 6.8 s (slow) .. 2.8 s (lively), stretched by the mood
     const t0 = ctx.currentTime + 0.1;
     if (this.musicOn) {
-      const mood = MOODS[c.mood] || MOODS.calm, tr = Math.pow(2, (c.key | 0) / 12);
-      const ch = mood.chords[this.bar % 4], padAmp = 0.022 * 3 / ch.length;
-      ch.forEach((f) => {                                         // pad: soft swell over the bar
-        const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * tr;
-        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0);
-        g.gain.exponentialRampToValueAtTime(padAmp, t0 + Math.min(1.6, BAR * 0.35)); g.gain.exponentialRampToValueAtTime(0.0001, t0 + BAR + 1.2);
-        o.connect(g); g.connect(this.musicBus); o.start(t0); o.stop(t0 + BAR + 1.3);
-      });
-      const scale = mood.scale;
+      const tr = Math.pow(2, (c.key | 0) / 12);
+      const ch = mood.chords[this.bar % 4];
+      this._pad(mood, ch, tr, t0, BAR);
+      if (mood.bass) this._voice('bass', ch[0] / 2 * tr, t0 + 0.05, 0.05);
+      if (mood.arp) {                                             // picked broken chord: up and back, eighth notes
+        const order = [0, 1, 2, 1, 0, 2, 1, 2], step = BAR / 8;
+        order.forEach((k, i) => this._voice('pluck', ch[k] * 2 * tr, t0 + i * step, 0.028 * (i % 2 ? 0.7 : 1)));
+      }
+      const scale = mood.scale, mul = Math.pow(2, mood.oct - 1);
       let idx = 3 + Math.floor(this.rnd() * 4);
-      const steps = Math.max(0, Math.round(c.notes * 6 - 1 + this.rnd() * 2));
-      for (let i = 0; i < steps; i++) {                           // music box: a few notes wandering by steps
+      let steps = Math.max(0, Math.round(c.notes * 6 - 1 + this.rnd() * 2));
+      if (mood.sparse) steps = Math.ceil(steps / 2);
+      if (mood.busy) steps = Math.round(steps * 1.6);
+      for (let i = 0; i < steps; i++) {                           // the melody wanders by steps
         idx = Math.max(0, Math.min(scale.length - 1, idx + Math.floor(this.rnd() * 5) - 2));
         const t = t0 + 0.3 + i * (BAR / (steps + 0.5)) + this.rnd() * 0.25 * BAR / 4.8;
-        [[1, 0.05], [2, 0.012], [3, 0.006]].forEach(([mul, amp]) => {
-          const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = scale[idx] * 2 * mul * tr;
-          const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
-          g.gain.exponentialRampToValueAtTime(amp, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.2 / mul);
-          o.connect(g); g.connect(this.musicBus); o.start(t); o.stop(t + 2.4);
-        });
+        this._voice(mood.voice, scale[idx] * mul * tr, t, mood.voice === 'pluck' ? 0.04 : 0.05);
+      }
+      if (mood.sparkle) {                                         // tiny high twinkles here and there
+        for (let i = 0, n = 2 + Math.floor(this.rnd() * 3); i < n; i++)
+          this._voice('twinkle', scale[5 + Math.floor(this.rnd() * 4)] * 8 * tr, t0 + this.rnd() * BAR, 0.012);
       }
     }
     this.bar++;
     clearTimeout(this._musicTimer);
     this._musicTimer = setTimeout(() => this._musicLoop(), BAR * 1000);
+  }
+  // the chord bed of each mood
+  _pad(mood, ch, tr, t0, BAR) {
+    const ctx = this.ctx, end = t0 + BAR + 1.3, amp = 0.022 * 3 / ch.length;
+    const out = ctx.createGain(); out.connect(this.musicBus);
+    let dest = out;
+    if (mood.pad === 'warm' || mood.pad === 'wide') {             // through a lowpass; the wide pad's filter breathes
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 0.7;
+      f.frequency.setValueAtTime(mood.pad === 'warm' ? 900 : 500, t0);
+      if (mood.pad === 'wide') f.frequency.linearRampToValueAtTime(1600, t0 + BAR * 0.55), f.frequency.linearRampToValueAtTime(600, end);
+      f.connect(out); dest = f;
+    }
+    ch.forEach((fr) => {
+      const voices = mood.pad === 'wide' ? [[-7, 'sawtooth', 0.32], [7, 'sawtooth', 0.32]] : mood.pad === 'warm' ? [[0, 'triangle', 1.2]] : [[0, 'sine', 1]];
+      for (const [cents, type, k] of voices) {
+        const o = ctx.createOscillator(); o.type = type; o.frequency.value = fr * tr; o.detune.value = cents;
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(amp * k, t0 + Math.min(mood.pad === 'wide' ? 2.4 : 1.6, BAR * 0.4));
+        g.gain.exponentialRampToValueAtTime(0.0001, end);
+        o.connect(g); g.connect(dest); o.start(t0); o.stop(end + 0.1);
+      }
+    });
+  }
+  // one note in a mood's voice
+  _voice(kind, f, t, amp) {
+    const ctx = this.ctx;
+    const note = (partials, dec) => partials.forEach(([mul, a, d = dec, type = 'sine']) => {
+      const o = ctx.createOscillator(); o.type = type; o.frequency.value = f * mul;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(amp * a, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.connect(g); g.connect(this.musicBus); o.start(t); o.stop(t + d + 0.05);
+    });
+    if (kind === 'box') note([[1, 1, 2.2], [2, 0.24, 1.1], [3, 0.12, 0.7]]);                  // music box
+    else if (kind === 'bell') note([[1, 1, 4.5], [2.76, 0.35, 2.2], [5.4, 0.12, 1.1], [0.5, 0.2, 3]]);   // glassy bell, inharmonic
+    else if (kind === 'celesta') note([[1, 1, 0.9], [4, 0.3, 0.35], [2, 0.18, 0.5]]);        // short, bright
+    else if (kind === 'twinkle') note([[1, 1, 0.35], [1.5, 0.4, 0.25]]);
+    else if (kind === 'pluck') note([[1, 1, 1.1, 'triangle'], [2, 0.3, 0.45], [3, 0.1, 0.25]]);   // a soft picked string
+    else if (kind === 'bass') note([[1, 1, 2.6], [2, 0.25, 1.2]]);
   }
   setMuted(m) {
     this.muted = m;

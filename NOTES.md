@@ -222,3 +222,11 @@ https://ycyeom.github.io/wish-lanterns/
   departure (+2 requests per visit). `GET /lakes` → `{lakes:[...30], cap}`, `GET /online` → `{online}` (for
   listings like metatrip), both cached 10 s at the edge so asking often never wakes the lakes.
   Test: `.studio/lakes2.mjs` (local server; S=<url> for the live one).
+
+## Music moods made distinct
+- Each mood now has its own instrument, rhythm and register, not just chords: calm = sine pad + music box;
+  warm = triangle pad through a lowpass, a bass note per bar and a picked broken chord (8ths), slower;
+  dreamy = detuned saw pad with a breathing filter, sparse inharmonic glass bells, very slow bars;
+  starry = high celesta figures, more notes, tiny twinkles. A mood change starts a new bar at once.
+- `.studio/moods.mjs` renders 16 s of each offline (submit/music-samples/*.mp3) and prints brightness / onsets:
+  warm 235 Hz · 7.5/s, calm 514 · 6.1, dreamy 562 · 0.5, starry 2133 · 7.6.
