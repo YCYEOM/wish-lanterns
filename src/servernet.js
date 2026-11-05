@@ -7,6 +7,7 @@ import { ownerKey, invitedLake, LAKE_COUNT } from './net.js';
 
 export const BUILD = 'lanterns-server-1';
 const CONNECT_MS = 5000;
+const POS_MS = 400;              // at most one position every 0.4 s (each incoming message counts on the free plan)
 
 export class ServerNet {
   constructor(hooks, url) {
@@ -131,8 +132,10 @@ export class ServerNet {
     this.scarf = scarf | 0;
     if (!this.ws || this.n < 2) return;
     const t = Date.now(), L = this.lastPos;
-    if (L && !cer && Math.hypot(x - L.x, z - L.z) < 0.25 && t - L.t < 3000) return;
-    if (L && !cer && t - L.t < 200) return;
+    // the server keeps where everyone last stood (newcomers get it on joining), so standing still needs only
+    // a rare refresh; while walking ~2.5 a second is plenty, the others' characters walk smoothly to each point
+    if (L && !cer && Math.hypot(x - L.x, z - L.z) < 0.25 && t - L.t < 15000) return;
+    if (L && !cer && t - L.t < POS_MS) return;
     this.lastPos = { x, z, t };
     this.send({ t: 'p', x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: this.scarf });
   }

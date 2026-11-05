@@ -168,6 +168,7 @@ https://ycyeom.github.io/wish-lanterns/
   cleans text with `cleanMessage` from src/data.js; rate limits (lantern 1 / 4 s, hearts 30 / min, wish 1 / 3 s);
   lake cap 10 for auto-join (a full lake answers `{t:'full'}` and the client tries the next).
   `POST /admin/delete?lake=N&o=&k=` with `Authorization: Bearer $ADMIN_TOKEN` (wrangler secret) removes a lantern.
+- Positions to the server: at most every 0.4 s while walking, every 15 s standing (the server keeps the last spot).
 - Client: `src/servernet.js` (`ServerNet`, same face as `Net`), chosen when `src/config.js` has a server URL
   (or `?server=`). If it cannot connect within 5 s, `onFallback` switches to P2P + relays (net.js + board.js), so
   the free quota running out never breaks the game. Protocol: lantern text is `tx` (`t` is the message type).
