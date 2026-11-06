@@ -880,7 +880,7 @@ function update(dt) {
   uniforms.nightK.value = nightOverride ?? (0.5 - 0.5 * Math.cos(Math.PI * 2 * T / 1200));
   const wasBusy = walker.busy();
   walker.update(dt, (screen === 'lake' || screen === 'card') && !wasBusy ? heldKeys() : NO_KEYS, T);
-  if (wasBusy && !walker.busy() && (screen === 'lake' || screen === 'card')) { $('launchBtn').classList.remove('hidden'); $('tip').classList.remove('hidden'); }
+  if (wasBusy && !walker.busy() && (screen === 'lake' || screen === 'card')) { $('launchBtn').classList.remove('hidden'); if ($('shareBtn').classList.contains('hidden')) $('tip').classList.remove('hidden'); }
   if (beach) beach.update(dt, walker.pos);
   updateTapMark(dt);
   updateLanterns(dt);
@@ -1122,6 +1122,7 @@ function openCompose() {
   setTimeout(() => $('msg').focus(), 50);
 }
 function closePanel(which) {
+  if (which === 'share') { $('sharePanel').classList.add('hidden'); if (screen === 'share') screen = 'lake'; return; }
   if (which === 'lakes') { $('lakePanel').classList.add('hidden'); if (screen === 'lakes') screen = 'lake'; return; }
   if (which === 'music') { $('musicPanel').classList.add('hidden'); if (screen === 'music') screen = 'lake'; return; }
   if (which === 'diary') { $('diary').classList.add('hidden'); if (screen === 'diary') screen = 'lake'; return; }
@@ -1173,6 +1174,7 @@ function sendLantern() {
   persist(); updateStats(); net.setMine(save.mine);
   board.post(net.myKey, { k: id, t: text, c: composeColor, m: composeMode });
   if (net.post) net.post({ k: id, t: text, c: composeColor, m: composeMode });
+  offerShare({ text, lake: lakeNo, at: Date.now() }, water ? 3200 : 2700);
   net.sendPos(walker.pos.x, walker.pos.z, composeMode, myScarf);   // the others see us kneel or lift it
   $('compose').classList.add('hidden'); screen = 'lake';   // the button and tip come back when the pose ends
   $('launchBtn').classList.add('hidden'); $('tip').classList.add('hidden'); closeCard();
@@ -1195,6 +1197,7 @@ function openCard(L) {
   $('hideBtn').classList.toggle('hidden', L.mine);
   // only other people's lanterns can be reported (the built-in warm ones can just be hidden)
   $('reportBtn').classList.toggle('hidden', L.mine || !L.id.includes(':'));
+  $('photoBtn').classList.toggle('hidden', !L.mine);
   reportArm = 0; $('reportBtn').textContent = '🚩 신고';
   $('card').classList.remove('hidden');
   $('tip').style.opacity = 0;
@@ -1232,6 +1235,78 @@ $('hideBtn').onclick = () => {
   save.hidden.push(selected.id); persist();
   const L = selected; closeCard(); removeLantern(L);
   toast('이 등불은 내 화면에서 숨겼어요', 2200);
+};
+// ---- the photo card: the moment as a 9:16 picture with the line, the date and the address, to share or keep
+const SITE = 'wish-lanterns.ycyeom.workers.dev';
+let shareMoment = null, shareTimer = 0, shareBlob = null;
+function offerShare(moment, delay) {
+  shareMoment = moment; clearTimeout(shareTimer);
+  shareTimer = setTimeout(() => {
+    if (screen !== 'lake' && screen !== 'card') return;
+    $('shareBtn').classList.remove('hidden'); $('tip').classList.add('hidden');
+    shareTimer = setTimeout(() => $('shareBtn').classList.add('hidden'), 14000);
+  }, delay);
+}
+function wrapLines(g, text, maxW) {
+  const out = []; let line = '';
+  for (const ch of [...text]) { if (g.measureText(line + ch).width > maxW && line) { out.push(line); line = ch; } else line += ch; }
+  if (line) out.push(line);
+  return out.slice(0, 3);
+}
+// draw the scene now and compose the card (the WebGL picture must be copied in the same turn it is drawn)
+function makeCard(m) {
+  const W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  render(0);
+  const sw = canvas.width, sh = canvas.height, k = Math.max(W / sw, H / sh), dw = sw * k, dh = sh * k;
+  g.fillStyle = '#050816'; g.fillRect(0, 0, W, H);
+  g.drawImage(canvas, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  let gr = g.createLinearGradient(0, 0, 0, 380); gr.addColorStop(0, 'rgba(5,8,22,.75)'); gr.addColorStop(1, 'rgba(5,8,22,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, W, 380);
+  gr = g.createLinearGradient(0, H - 820, 0, H); gr.addColorStop(0, 'rgba(5,8,22,0)'); gr.addColorStop(0.45, 'rgba(5,8,22,.78)'); gr.addColorStop(1, 'rgba(5,8,22,.94)');
+  g.fillStyle = gr; g.fillRect(0, H - 820, W, 820);
+  const F = '"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.shadowColor = 'rgba(255,160,80,.75)'; g.shadowBlur = 28;
+  g.fillStyle = '#ffe6c4'; g.font = `700 54px ${F}`; g.fillText('🏮 소원 등불', W / 2, 150);
+  g.shadowBlur = 0; g.fillStyle = 'rgba(255,240,220,.75)'; g.font = `400 30px ${F}`; g.fillText('오늘의 마음을 등불에 담아', W / 2, 222);
+  const d = new Date((m.at || Date.now()) + 9 * 3600 * 1000);
+  const when = `${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 밤${m.lake ? ` · 호수 ${m.lake}` : ''}`;
+  g.font = `700 64px ${F}`;
+  const lines = m.text ? wrapLines(g, `「${m.text}」`, W - 160) : ['말없이 띄운 등불'];
+  let y = H - 330 - (lines.length - 1) * 44;
+  g.shadowColor = 'rgba(255,170,90,.8)'; g.shadowBlur = 30; g.fillStyle = '#fff3df';
+  if (!m.text) g.font = `600 52px ${F}`;
+  for (const ln of lines) { g.fillText(ln, W / 2, y); y += 88; }
+  g.shadowBlur = 0; g.fillStyle = 'rgba(255,230,200,.85)'; g.font = `400 34px ${F}`; g.fillText(when, W / 2, H - 190);
+  g.fillStyle = 'rgba(255,214,170,.95)'; g.font = `600 32px ${F}`; g.fillText(SITE, W / 2, H - 110);
+  return c;
+}
+function openShare(m) {
+  const c = makeCard(m);
+  $('shareBtn').classList.add('hidden'); closeCard();
+  $('shareImg').src = c.toDataURL('image/jpeg', 0.9);
+  shareBlob = null; c.toBlob((b) => { shareBlob = b; }, 'image/jpeg', 0.92);
+  $('toast').classList.add('hidden');
+  $('sharePanel').classList.remove('hidden'); screen = 'share';
+  audio.chime([783.99, 1046.5], 0.08);
+}
+const shareFile = () => shareBlob && new File([shareBlob], `sowon-deungbul-${Date.now().toString(36)}.jpg`, { type: 'image/jpeg' });
+$('shareBtn').onclick = (e) => { e.stopPropagation(); if (shareMoment) openShare(shareMoment); };
+$('photoBtn').onclick = () => { if (selected && selected.mine) { const L = selected; const log = save.log.find((x) => x.id === L.id); openShare({ text: L.text, lake: (log && log.lake) || lakeNo, at: (log && log.at) || Date.now() }); } };
+$('shareSave').onclick = () => {
+  const f = shareFile(); if (!f) return;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast('사진을 저장했어요', 2200);
+};
+$('shareGo').onclick = async () => {
+  const f = shareFile(); if (!f) return;
+  const data = { files: [f], title: '소원 등불', text: `오늘의 마음을 등불에 담아 띄웠어요 🏮 https://${SITE}` };
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share(data); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  $('shareSave').click();                                  // no share sheet here (desktop): save it instead
+  try { await navigator.clipboard.writeText(`https://${SITE}`); toast('사진을 저장하고 주소를 복사했어요', 2600); } catch {}
 };
 // report: a second tap confirms; it hides the lantern here at once and tells the server (3 different people's
 // reports take it off the lake for everyone)
@@ -1422,6 +1497,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (screen === 'diary') { closePanel('diary'); return; }
   if (screen === 'music') { closePanel('music'); return; }
   if (screen === 'lakes') { closePanel('lakes'); return; }
+  if (screen === 'share') { closePanel('share'); return; }
   if (press) return;                                   // a second finger: ignore
   press = { id: e.pointerId, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, drag: false };
   try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -1484,7 +1560,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary'); if (screen === 'music') closePanel('music'); if (screen === 'lakes') closePanel('lakes'); }
+  if (e.key === 'Escape') { closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary'); if (screen === 'music') closePanel('music'); if (screen === 'lakes') closePanel('lakes'); if (screen === 'share') closePanel('share'); }
   else if ((e.key === 'Enter' || e.key === ' ') && screen === 'title') startGame();
 });
 
