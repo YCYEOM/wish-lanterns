@@ -320,6 +320,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       if (t >= D) { emo = null; bubble.visible = false; }
     }
     const mix = (a, b, k) => a + (b - a) * k;
+    const BOW = 0.75;                     // how far forward a bow leans (radians)
     if (sitAmt > 0.001) {                 // sit on the sand: legs out in front, a hand behind, looking up at the sky
       raise *= 1 - sitAmt;
       legL.rotation.x = mix(legL.rotation.x, 1.45, sitAmt); legR.rotation.x = mix(legR.rotation.x, 1.32, sitAmt);
@@ -342,12 +343,15 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       legL.rotation.x += tuck; legR.rotation.x += tuck;
       legL.userData.knee.rotation.x -= tuck * 1.6; legR.userData.knee.rotation.x -= tuck * 1.6;
     }
-    if (bow > 0) { armL.rotation.x = mix(armL.rotation.x, 0.25, bow); armL.rotation.z = mix(armL.rotation.z, 0.1, bow); }
+    if (bow > 0) {                        // bend at the hips: the legs undo the body's lean so the feet stay planted
+      armL.rotation.x = mix(armL.rotation.x, 0.25, bow); armL.rotation.z = mix(armL.rotation.z, 0.1, bow);
+      legL.rotation.x += BOW * bow; legR.rotation.x += BOW * bow;
+    }
     fig.position.y = hopY * 0.38;
 
     // body: bob twice per stride, roll into turns, lean into speed, breathe when still
     body.position.y = 0.5 + Math.abs(c) * 0.055 * w + breathe * 0.008 - kneel * 0.26 + lift * 0.03 - sitAmt * 0.36;
-    body.rotation.x = -0.12 * w - Math.max(-0.1, Math.min(0.1, aFwd * 0.012)) - kneel * 0.35 + lift * 0.08 - bow * 0.75 + sitAmt * 0.12;
+    body.rotation.x = -0.12 * w - Math.max(-0.1, Math.min(0.1, aFwd * 0.012)) - kneel * 0.35 + lift * 0.08 - bow * BOW + sitAmt * 0.12;
     body.rotation.z = s * 0.04 * w - Math.max(-0.25, Math.min(0.25, turnRate * 0.05)) * w;
     body.rotation.y = s * 0.08 * w;
     mantle.scale.y = 0.55 + breathe * 0.02;
