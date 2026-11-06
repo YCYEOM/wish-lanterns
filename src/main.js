@@ -30,7 +30,7 @@ function loadSave() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
     return { launched: s.launched | 0, hearts: s.hearts | 0, received: s.received | 0, wishes: s.wishes | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [],
-      log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false,
+      log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false, starsSeen: s.starsSeen | 0,
       musicCfg: { ...MUSIC_DEFAULTS, ...(s.musicCfg && typeof s.musicCfg === 'object' ? s.musicCfg : {}) } };
   } catch { return { launched: 0, hearts: 0, received: 0, wishes: 0, hidden: [], hearted: [], mine: [], log: [], heartsBy: {}, lastVisit: 0, music: true, musicCfg: { ...MUSIC_DEFAULTS } }; }
 }
@@ -594,6 +594,76 @@ starGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array([1, 0.9
 const shootingStar = new THREE.Line(starGeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
 shootingStar.visible = false; shootingStar.frustumCulled = false;
 scene.add(shootingStar);
+// ---- my constellation: every lantern you launched becomes a star from the next day (Seoul date), a dozen to a
+// constellation joined by faint lines, above the far hills left of the moon; more hearts, a brighter star
+const kstDay = (ms) => { const d = new Date(ms + 9 * 3600 * 1000); return d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate(); };
+let starsForce = false;
+const ripe = (e) => starsForce || (e.at && kstDay(e.at) < kstDay(Date.now()));
+const strHash = (s, k = 0) => { let h = 2166136261 ^ k; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return ((h >>> 0) % 100000) / 100000; };
+const myStarMat = new THREE.ShaderMaterial({
+  uniforms: { time: uniforms.time, pr: { value: renderer.getPixelRatio() } },
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+  vertexShader: `uniform float time; uniform float pr; attribute float aSize; attribute vec3 aCol; attribute float aBorn; varying vec3 vC; varying float vA;
+    void main(){ vC = aCol; float tw = 0.82 + 0.18 * sin(time * (1.3 + fract(aSize * 7.1) * 2.0) + aSize * 13.0);
+      float born = clamp((time - aBorn) / 2.5, 0.0, 1.0); float pulse = 1.0 + 1.6 * exp(-max(0.0, time - aBorn - 2.0) * 0.5) * step(0.0, time - aBorn);
+      vA = tw * born; gl_PointSize = aSize * pr * (0.85 + 0.3 * tw) * pulse; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `varying vec3 vC; varying float vA;
+    void main(){ vec2 q = gl_PointCoord - 0.5; float r = length(q);
+      float core = exp(-r * r * 90.0), halo = exp(-r * r * 14.0) * 0.45;
+      float rays = (exp(-abs(q.x) * 70.0) * exp(-abs(q.y) * 7.0) + exp(-abs(q.y) * 70.0) * exp(-abs(q.x) * 7.0)) * 0.5;
+      float a = (core + halo + rays) * vA; if (a < 0.004) discard; gl_FragColor = vec4(vC * a, a); }`,
+});
+const myStarLineMat = new THREE.LineBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+let myStars = null, myStarLines = null, myStarCount = 0;
+function buildMyStars(bornNew = 0) {
+  if (myStars) { scene.remove(myStars); myStars.geometry.dispose(); scene.remove(myStarLines); myStarLines.geometry.dispose(); }
+  const list = save.log.filter(ripe).slice(-60);
+  myStarCount = list.length;
+  const pos = [], size = [], col = [], born = [], seg = [];
+  let az = 0, el = 0, az0 = 0;
+  list.forEach((e, i) => {
+    const j = i % 12, g = Math.floor(i / 12);
+    if (j === 0) { az0 = -0.3 - g * 0.55; az = az0 + (strHash(e.id, 1) - 0.5) * 0.06; el = 0.27 + strHash(e.id, 2) * 0.04; }
+    else {
+      const th = (strHash(e.id, 3) - 0.5) * Math.PI * 1.6 + (j % 2 ? 0.4 : -0.4), step = 0.045 + strHash(e.id, 4) * 0.035;
+      az += Math.cos(th) * step; el += Math.sin(th) * step * 0.8;
+      if (el < 0.21) el = 0.42 - el; if (el > 0.42) el = 0.84 - el;   // clear of the hills (they reach ~10°)
+      if (Math.abs(az - az0) > 0.22) az = az0 + Math.sign(az - az0) * 0.22 - (az - az0 - Math.sign(az - az0) * 0.22);
+    }
+    const R = 430, ce = Math.cos(el);
+    pos.push(Math.sin(az) * ce * R, Math.sin(el) * R, LAKE.cz - Math.cos(az) * ce * R);
+    const h = save.heartsBy[e.id] | 0;
+    size.push(10 + Math.min(1, Math.log2(1 + h) / 3) * 9 + strHash(e.id, 5) * 3);
+    const tint = new THREE.Color((COLORS.find((c) => c.id === e.color) || COLORS[0]).hex).lerp(new THREE.Color(0xfff6e8), 0.6);
+    col.push(tint.r, tint.g, tint.b);
+    born.push(i >= list.length - bornNew ? uniforms.time.value + 1.5 + (i - (list.length - bornNew)) * 0.6 : -100);
+    if (j > 0) seg.push(...pos.slice(-6, -3), ...pos.slice(-3));
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aSize', new THREE.Float32BufferAttribute(size, 1));
+  g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aBorn', new THREE.Float32BufferAttribute(born, 1));
+  myStars = new THREE.Points(g, myStarMat); myStars.frustumCulled = false; myStars.renderOrder = -15; scene.add(myStars);
+  const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(seg, 3));
+  myStarLines = new THREE.LineSegments(lg, myStarLineMat); myStarLines.frustumCulled = false; myStarLines.renderOrder = -16; scene.add(myStarLines);
+}
+// on arrival: build them, and if some became stars since the last visit, let them appear one by one and say so
+function arriveStars() {
+  const n = save.log.filter(ripe).length, fresh = Math.max(0, n - (save.starsSeen | 0));
+  buildMyStars(fresh);
+  if (fresh > 0) {
+    save.starsSeen = n; persist();
+    const show = () => {
+      if (screen === 'title' || !weatherNoticed || Date.now() < toastBusyUntil + 300) { setTimeout(show, 700); return; }
+      toast(fresh === 1 ? '⭐ 지난번에 띄운 등불이 별이 되었어요 · 하늘을 올려다보세요' : `⭐ 지난번에 띄운 등불 ${fresh}개가 별이 되었어요 · 하늘을 올려다보세요`, 5200);
+      audio.chime([1046.5, 1318.5, 1567.98, 2093], 0.14);
+      // the view lifts toward them for a few seconds, then settles back
+      if (screen === 'lake') { walker.turnView(-0.3, -0.55); setTimeout(() => { if (screen === 'lake') walker.turnView(null); }, 6500); }
+    };
+    setTimeout(show, 1500);
+  }
+}
 const starHead = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xfff1d0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
 starHead.visible = false; starHead.scale.setScalar(9); scene.add(starHead);
 let star = null, nextStar = 1e9;   // nextStar: only for a forced star (tests); the real ones come from the clock
@@ -894,6 +964,7 @@ function update(dt) {
 }
 
 function render(dt = 0) {
+  myStarMat.uniforms.pr.value = renderer.getPixelRatio();
   updateCamera(dt);
   renderer.render(scene, camera);
 }
@@ -1085,6 +1156,7 @@ function startGame() {
   $('hud').classList.remove('hidden');
   updateStats();
   net.start();
+  arriveStars();
   if (SOFTWARE_GPU) setTimeout(() => toast('⚠️ 그래픽 가속이 꺼져 있어 가벼운 화면으로 보여 드려요 · 크롬 설정 → 시스템 → "가능한 경우 그래픽 가속 사용"을 켜면 훨씬 예뻐요', 9000), 2500);
   const inv = invitedLake();
   if (inv) setTimeout(() => toast(`초대받은 호수 ${inv}에 들어왔어요`, 3500), 1400);
@@ -1433,7 +1505,7 @@ function dateKST(ms) { const d = new Date(ms + 9 * 3600 * 1000); return `${d.get
 function openDiary() {
   closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'music') closePanel('music');
   const c = COLORS;
-  $('diarySum').innerHTML = `<span>띄운 등불 <b>${save.launched}</b></span><span>받은 반짝임 <b>${save.received}</b></span><span>보낸 반짝임 <b>${save.hearts}</b></span><span>별똥별 소원 <b>${save.wishes}</b></span>`;
+  $('diarySum').innerHTML = `<span>⭐ 나의 별 <b>${save.log.filter(ripe).length}</b></span><span>띄운 등불 <b>${save.launched}</b></span><span>받은 반짝임 <b>${save.received}</b></span><span>보낸 반짝임 <b>${save.hearts}</b></span><span>별똥별 소원 <b>${save.wishes}</b></span>`;
   const list = $('diaryList'); list.textContent = '';
   const items = save.log.length ? [...save.log].reverse() : [];
   if (!items.length) { const e = document.createElement('div'); e.className = 'diary-empty'; e.textContent = '아직 띄운 등불이 없어요. 물가로 가서 첫 등불을 띄워 보세요.'; list.appendChild(e); }
@@ -1443,7 +1515,7 @@ function openDiary() {
     const body = document.createElement('div'); body.className = 'diary-text';
     body.textContent = it.text ? `「${it.text}」` : '말없이 띄운 등불';
     const meta = document.createElement('div'); meta.className = 'diary-meta';
-    meta.textContent = `${it.at ? dateKST(it.at) + ' 밤' : ''}${it.lake ? ` · 호수 ${it.lake}` : ''} · ${it.mode === 'sky' ? '하늘로' : '물 위로'}`;
+    meta.textContent = `${it.at ? dateKST(it.at) + ' 밤' : ''}${it.lake ? ` · 호수 ${it.lake}` : ''} · ${it.mode === 'sky' ? '하늘로' : '물 위로'} · ${ripe(it) ? '⭐ 별이 되었어요' : '내일 별이 돼요'}`;
     body.appendChild(meta);
     const hb = document.createElement('span'); hb.className = 'diary-heart'; const n = save.heartsBy[it.id] | 0; hb.textContent = n ? `♡ ${n}` : '';
     row.append(dot, body, hb); list.appendChild(row);
@@ -1702,6 +1774,8 @@ window.__studio.loveInfo = (id) => { const L = lanterns.find(l => l.id === id); 
 window.__studio.renderCost = () => { const gl = renderer.getContext(); const px = new Uint8Array(4); const t = () => { let best = 1e9; for (let i = 0; i < 4; i++) { const s = performance.now(); renderer.render(scene, camera); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); best = Math.min(best, performance.now() - s); } return best; }; t(); const base = t(); const out = { base: [+base.toFixed(1), renderer.info.render.triangles] }; scene.children.forEach((o, i) => { if (!o.visible) return; o.visible = false; const ms = t(); const tris = renderer.info.render.triangles; const k = (o.type + ':' + (o.name || o.userData.tag || i)) + (o.isInstancedMesh ? '[' + o.count + ']' : '') + (o.material && o.material.type ? '/' + o.material.type : ''); out[k] = [+(base - ms).toFixed(1), out.base[1] - tris]; o.visible = true; }); return out; };
 window.__studio.dressTris = () => { const d = scene.children.find(o => o.userData.tag === 'shore-dressing'); return d ? d.children.map(c => [c.userData.tag || c.type, c.count ?? 1, c.geometry ? (c.geometry.index ? c.geometry.index.count : c.geometry.attributes.position.count) / 3 : 0, Math.round((c.count ?? 1) * (c.geometry ? (c.geometry.index ? c.geometry.index.count : c.geometry.attributes.position.count) / 3 : 0))]) : null; };
 window.__studio.gpu = () => { const gl = renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info'); return { renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, points: renderer.info.render.points, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs.length, lite: LITE, res: resScale, canvas: canvas.width + 'x' + canvas.height }; };
+window.__studio.ripen = () => { starsForce = true; arriveStars(); return myStarCount; };
+window.__studio.myStars = () => myStarCount;
 window.__studio.openId = (id) => { const L = lanterns.find(l => l.id === id); if (L) openCard(L); return !!L; };
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];

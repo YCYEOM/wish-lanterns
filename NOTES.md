@@ -240,3 +240,14 @@ https://ycyeom.github.io/wish-lanterns/
   delete / 문제없음 (clear reports) / 작성자 차단 (7 days, all lakes) / 차단 해제. API under /admin/* with Bearer token.
   ADMIN_TOKEN is a Worker secret (Cloudflare dashboard → wish-lanterns → Settings → Variables and Secrets);
   local: server/.dev.vars. Test: `.studio/report.mjs` (local server, token local-test-token).
+
+## Photo card and my constellation
+- Photo card: after a launch a "📸 이 순간 남기기" pill (14 s), and "📸 사진" on your own lantern's card. `makeCard`
+  draws the scene and copies the WebGL canvas in the same turn into a 1080x1920 card (title, the line, Seoul date,
+  lake, address); preview panel → 공유하기 (Web Share with the file; desktop: saves it and copies the address) /
+  저장하기 (download). `.studio/share.mjs`.
+- My constellation: each `save.log` lantern becomes a star once the Seoul date has turned (`ripe`), 12 to a
+  constellation joined by faint lines, at 12-24° up (clear of the hills, which reach ~10°), left of the moon; size by
+  hearts, tint by lantern colour; new ones fade in with a pulse, a toast says how many, and the view lifts to them
+  for ~6 s (`walker.turnView(-0.3, -0.55)`). `save.starsSeen`; diary shows ⭐ count and "⭐ 별이 되었어요 / 내일 별이
+  돼요". `__studio.ripen()` forces it; `.studio/stars-mine.mjs` seeds 15 old lanterns.
