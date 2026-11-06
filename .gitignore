@@ -10,3 +10,4 @@ output/
 server/node_modules
 server/.wrangler
 .wrangler
+server/.dev.vars

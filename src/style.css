@@ -234,3 +234,6 @@ body.hud-off #netline { display: none; }
 .lake-cell.here { border-color: #ffd9a0; background: rgba(255,200,140,.28); color: #fff3df; }
 .lake-cell:hover { background: rgba(255,200,140,.2); }
 @media (max-width: 520px) { .lake-panel { top: 104px; } }
+
+.ghost-btn.report { color: #ffb4b4; border-color: rgba(255,150,150,.3); }
+.card-actions { flex-wrap: wrap; }

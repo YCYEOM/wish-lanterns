@@ -1005,6 +1005,8 @@ const netHooks = {
     if (d.cer && !r.w.busy()) r.w.ceremony(d.cer);
     else if (!d.cer) { r.w.walkTo(d.x, d.z); r.w.setSitting(!!d.sit); }
   },
+  // a lantern taken down (reported by several people, or by the admin): it leaves every screen
+  onRemove(id) { const L = lanterns.find((l) => l.id === id && !l.mine); if (L) { if (selected === L) closeCard(); removeLantern(L); } },
   onEmote(id, k) { const r = others.get(id); if (r) r.w.emote(k); },
   onWish(slot, h) { otherWish(slot, h); },
   onLeave(id) { const r = others.get(id); if (r) { r.w.dispose(); others.delete(id); } },
@@ -1191,6 +1193,9 @@ function openCard(L) {
   else { m.textContent = '말없이 띄운 등불이에요\n그 마음도 닿기를'; m.style.whiteSpace = 'pre-line'; m.style.opacity = 0.75; }
   refreshHeart();
   $('hideBtn').classList.toggle('hidden', L.mine);
+  // only other people's lanterns can be reported (the built-in warm ones can just be hidden)
+  $('reportBtn').classList.toggle('hidden', L.mine || !L.id.includes(':'));
+  reportArm = 0; $('reportBtn').textContent = '🚩 신고';
   $('card').classList.remove('hidden');
   $('tip').style.opacity = 0;
   screen = 'card';
@@ -1227,6 +1232,18 @@ $('hideBtn').onclick = () => {
   save.hidden.push(selected.id); persist();
   const L = selected; closeCard(); removeLantern(L);
   toast('이 등불은 내 화면에서 숨겼어요', 2200);
+};
+// report: a second tap confirms; it hides the lantern here at once and tells the server (3 different people's
+// reports take it off the lake for everyone)
+let reportArm = 0;
+$('reportBtn').onclick = () => {
+  if (!selected || selected.mine) return;
+  if (Date.now() - reportArm > 3000) { reportArm = Date.now(); $('reportBtn').textContent = '정말 신고할까요?'; audio.tick(); return; }
+  const L = selected;
+  const sent = net.report(L.id);
+  save.hidden.push(L.id); persist();
+  closeCard(); removeLantern(L);
+  toast(sent ? '🚩 신고했어요 · 이 등불은 이제 보이지 않아요. 여러 사람이 신고하면 호수에서 사라져요' : '🚩 이 등불은 이제 보이지 않아요', 3600);
 };
 $('wishBtn').addEventListener('click', (e) => { e.stopPropagation(); makeWish(); });
 $('invite').onclick = async () => {

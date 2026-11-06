@@ -230,3 +230,13 @@ https://ycyeom.github.io/wish-lanterns/
   starry = high celesta figures, more notes, tiny twinkles. A mood change starts a new bar at once.
 - `.studio/moods.mjs` renders 16 s of each offline (submit/music-samples/*.mp3) and prints brightness / onsets:
   warm 235 Hz · 7.5/s, calm 514 · 6.1, dreamy 562 · 0.5, starry 2133 · 7.6.
+
+## Reports and moderation
+- Card: 🚩 신고 (other people's network lanterns only; tap twice). Hides it locally at once and sends `{t:'r',id}`.
+- Lake object: `reports(id, by)`; 3 different reporters → the lantern is deleted and `{t:'rm',id}` drops it from every
+  screen; the writer gets a strike, 3 strikes → blocked 7 days (`bans`): their lanterns are then neither stored nor
+  relayed (they still see their own). Reports kept 7 days; 20 reports/hour per socket.
+- `/admin`: moderation page (paste ADMIN_TOKEN once): reported first, blocked writers, every lake's lanterns;
+  delete / 문제없음 (clear reports) / 작성자 차단 (7 days, all lakes) / 차단 해제. API under /admin/* with Bearer token.
+  ADMIN_TOKEN is a Worker secret (Cloudflare dashboard → wish-lanterns → Settings → Variables and Secrets);
+  local: server/.dev.vars. Test: `.studio/report.mjs` (local server, token local-test-token).
