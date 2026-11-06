@@ -35,7 +35,10 @@ function loadSave() {
   } catch { return { launched: 0, hearts: 0, received: 0, wishes: 0, hidden: [], hearted: [], mine: [], log: [], heartsBy: {}, lastVisit: 0, music: true, musicCfg: { ...MUSIC_DEFAULTS } }; }
 }
 let save = loadSave();
-if (!save.log.length && save.mine.length) save.log = save.mine.map(m => ({ id: m.id, text: m.text, color: m.color, mode: m.mode, at: 0, lake: 0 }));
+// a lantern's launch time is in its id ('m' + Date.now() in base 36): older saves had none recorded
+const idTime = (id) => { const t = /^m[0-9a-z]+$/.test(id || '') ? parseInt(id.slice(1), 36) : 0; return t > 1.6e12 && t < Date.now() + 864e5 ? t : 0; };
+if (!save.log.length && save.mine.length) save.log = save.mine.map(m => ({ id: m.id, text: m.text, color: m.color, mode: m.mode, at: idTime(m.id), lake: 0 }));
+for (const e of save.log) if (!e.at) e.at = idTime(e.id);   // repair diaries made with at: 0
 function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch {} }
 
 // ---------------------------------------------------------------- renderer / scene
@@ -599,6 +602,14 @@ scene.add(shootingStar);
 const kstDay = (ms) => { const d = new Date(ms + 9 * 3600 * 1000); return d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate(); };
 let starsForce = false;
 const ripe = (e) => starsForce || (e.at && kstDay(e.at) < kstDay(Date.now()));
+// everything you launched: the diary log, plus older lanterns from before the diary existed (only in save.mine;
+// their launch time is in the id, 'm' + Date.now() in base 36)
+function starEntries() {
+  const seen = new Set(save.log.map((e) => e.id));
+  const old = save.mine.filter((m) => !seen.has(m.id)).map((m) => ({ ...m, at: idTime(m.id) })).filter((m) => m.at);
+  return old.concat(save.log).sort((a, b) => (a.at || 0) - (b.at || 0));
+}
+const myRipe = () => starEntries().filter(ripe);
 const strHash = (s, k = 0) => { let h = 2166136261 ^ k; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return ((h >>> 0) % 100000) / 100000; };
 const myStarMat = new THREE.ShaderMaterial({
   uniforms: { time: uniforms.time, pr: { value: renderer.getPixelRatio() } },
@@ -609,7 +620,7 @@ const myStarMat = new THREE.ShaderMaterial({
       vA = tw * born; gl_PointSize = aSize * pr * (0.85 + 0.3 * tw) * pulse; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `varying vec3 vC; varying float vA;
     void main(){ vec2 q = gl_PointCoord - 0.5; float r = length(q);
-      float core = exp(-r * r * 90.0), halo = exp(-r * r * 14.0) * 0.45;
+      float core = exp(-r * r * 60.0) * 1.6, halo = exp(-r * r * 12.0) * 0.6;
       float rays = (exp(-abs(q.x) * 70.0) * exp(-abs(q.y) * 7.0) + exp(-abs(q.y) * 70.0) * exp(-abs(q.x) * 7.0)) * 0.5;
       float a = (core + halo + rays) * vA; if (a < 0.004) discard; gl_FragColor = vec4(vC * a, a); }`,
 });
@@ -617,7 +628,7 @@ const myStarLineMat = new THREE.LineBasicMaterial({ color: 0xffd9a0, transparent
 let myStars = null, myStarLines = null, myStarCount = 0;
 function buildMyStars(bornNew = 0) {
   if (myStars) { scene.remove(myStars); myStars.geometry.dispose(); scene.remove(myStarLines); myStarLines.geometry.dispose(); }
-  const list = save.log.filter(ripe).slice(-60);
+  const list = myRipe().slice(-60);
   myStarCount = list.length;
   const pos = [], size = [], col = [], born = [], seg = [];
   let az = 0, el = 0, az0 = 0;
@@ -633,7 +644,7 @@ function buildMyStars(bornNew = 0) {
     const R = 430, ce = Math.cos(el);
     pos.push(Math.sin(az) * ce * R, Math.sin(el) * R, LAKE.cz - Math.cos(az) * ce * R);
     const h = save.heartsBy[e.id] | 0;
-    size.push(10 + Math.min(1, Math.log2(1 + h) / 3) * 9 + strHash(e.id, 5) * 3);
+    size.push(16 + Math.min(1, Math.log2(1 + h) / 3) * 12 + strHash(e.id, 5) * 4);
     const tint = new THREE.Color((COLORS.find((c) => c.id === e.color) || COLORS[0]).hex).lerp(new THREE.Color(0xfff6e8), 0.6);
     col.push(tint.r, tint.g, tint.b);
     born.push(i >= list.length - bornNew ? uniforms.time.value + 1.5 + (i - (list.length - bornNew)) * 0.6 : -100);
@@ -650,7 +661,7 @@ function buildMyStars(bornNew = 0) {
 }
 // on arrival: build them, and if some became stars since the last visit, let them appear one by one and say so
 function arriveStars() {
-  const n = save.log.filter(ripe).length, fresh = Math.max(0, n - (save.starsSeen | 0));
+  const n = myRipe().length, fresh = Math.max(0, n - (save.starsSeen | 0));
   buildMyStars(fresh);
   if (fresh > 0) {
     save.starsSeen = n; persist();
@@ -1505,7 +1516,7 @@ function dateKST(ms) { const d = new Date(ms + 9 * 3600 * 1000); return `${d.get
 function openDiary() {
   closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'music') closePanel('music');
   const c = COLORS;
-  $('diarySum').innerHTML = `<span>⭐ 나의 별 <b>${save.log.filter(ripe).length}</b></span><span>띄운 등불 <b>${save.launched}</b></span><span>받은 반짝임 <b>${save.received}</b></span><span>보낸 반짝임 <b>${save.hearts}</b></span><span>별똥별 소원 <b>${save.wishes}</b></span>`;
+  $('diarySum').innerHTML = `<span>⭐ 나의 별 <b>${myRipe().length}</b></span><span>띄운 등불 <b>${save.launched}</b></span><span>받은 반짝임 <b>${save.received}</b></span><span>보낸 반짝임 <b>${save.hearts}</b></span><span>별똥별 소원 <b>${save.wishes}</b></span>`;
   const list = $('diaryList'); list.textContent = '';
   const items = save.log.length ? [...save.log].reverse() : [];
   if (!items.length) { const e = document.createElement('div'); e.className = 'diary-empty'; e.textContent = '아직 띄운 등불이 없어요. 물가로 가서 첫 등불을 띄워 보세요.'; list.appendChild(e); }
@@ -1524,6 +1535,18 @@ function openDiary() {
   $('diary').classList.remove('hidden'); screen = 'diary';
   audio.tick();
 }
+// from the diary: lift the view to your constellation (or say when the first stars will come)
+$('seeStars').onclick = () => {
+  closePanel('diary');
+  if (!myStarCount) {
+    const any = starEntries().length;
+    toast(any ? '⭐ 아직 별이 된 등불이 없어요 · 띄운 등불은 다음 날 하늘의 별이 돼요' : '⭐ 등불을 띄우면 다음 날 하늘에 나의 별이 생겨요', 4200);
+    return;
+  }
+  walker.turnView(null); walker.turnView(-0.3, -0.55);
+  toast(`⭐ 나의 별 ${myStarCount}개 · 금빛 선으로 이어진 별자리예요 (R: 원래 시점)`, 4200);
+  audio.chime([1046.5, 1318.5, 1567.98], 0.12);
+};
 $('diaryBtn').onclick = () => { audio.start(); if (screen === 'diary') closePanel('diary'); else openDiary(); };
 $('mute').onclick = () => { audio.setMuted(!audio.muted); $('mute').textContent = audio.muted ? '🔇' : '🔊'; };
 

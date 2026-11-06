@@ -251,3 +251,7 @@ https://ycyeom.github.io/wish-lanterns/
   hearts, tint by lantern colour; new ones fade in with a pulse, a toast says how many, and the view lifts to them
   for ~6 s (`walker.turnView(-0.3, -0.55)`). `save.starsSeen`; diary shows ⭐ count and "⭐ 별이 되었어요 / 내일 별이
   돼요". `__studio.ripen()` forces it; `.studio/stars-mine.mjs` seeds 15 old lanterns.
+- Fix: diaries migrated from save.mine had `at: 0`, so lanterns launched before the diary never became stars.
+  `idTime(id)` recovers the launch time from the id ('m' + Date.now() base 36), repairs such logs on load, and
+  `starEntries()` also counts save.mine lanterns missing from the log. Diary: "⭐ 내 별자리 보러 가기" lifts the
+  view to the constellation (or says when the first stars come). Stars brighter/larger. `.studio/stars-old.mjs`.
