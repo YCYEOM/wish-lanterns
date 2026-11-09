@@ -227,6 +227,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
   // the rowboat (built the first time it is used): the character sits on the bench and rows; the lantern
   // hangs from a little pole at the bow while afloat
   let boat = null, inBoat = false, rowPh = 0, rowAmt = 0, boatSpeed = 0;
+  const _hand = new THREE.Vector3(), _dir = new THREE.Vector3(), _xAxis = new THREE.Vector3(1, 0, 0);
   const waterOK = (x, z) => waterDist(x, z) < -1.6;
   function buildBoat() {
     const g = new THREE.Group(); g.visible = false; root.add(g);
@@ -236,10 +237,14 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     hull.position.y = 0.32; g.add(hull);
     const gun = new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 5, 24), rim); gun.rotation.x = Math.PI / 2; gun.scale.set(0.78, 1.95, 1); gun.position.y = 0.32; g.add(gun);
     for (const z of [-0.2, 0.75]) { const b = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.06, 0.32), hullMat); b.position.set(0, 0.28, z); g.add(b); }
+    // oars: each turns on its oarlock at the gunwale; its local +x runs from the rower's hand out through the
+    // oarlock to the blade, and is re-aimed every frame so the handle is always in the hand
     const oars = [-1, 1].map((s) => {
-      const piv = new THREE.Group(); piv.position.set(0.76 * s, 0.36, 0.05); g.add(piv);
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.9, 5), rim); shaft.rotation.z = Math.PI / 2; shaft.position.x = 0.55 * s; piv.add(shaft);
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.03, 0.18), hullMat); blade.position.x = 1.4 * s; piv.add(blade);
+      const piv = new THREE.Group(); piv.position.set(0.74 * s, 0.4, 0.15); g.add(piv);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 2.25, 5), rim); shaft.rotation.z = Math.PI / 2; shaft.position.x = 0.375; piv.add(shaft);
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.22, 6), hullMat); grip.rotation.z = Math.PI / 2; grip.position.x = -0.62; piv.add(grip);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.03, 0.18), hullMat); blade.position.x = 1.42; piv.add(blade);
+      const lock = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.012, 4, 8), rim); lock.position.copy(piv.position); lock.rotation.y = Math.PI / 2; g.add(lock);
       return { piv, s };
     });
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.9, 5), rim); pole.position.set(0, 0.7, -1.7); pole.rotation.x = -0.35; g.add(pole);
@@ -376,9 +381,8 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     fig.position.y = hopY * 0.38 + (inBoat ? 0.3 : 0);
     if (inBoat) {                         // rowing: both hands pull the oars in a slow circle, the body leans with the stroke
       const s1 = Math.sin(rowPh), c1 = Math.cos(rowPh);
-      armL.rotation.x = 1.0 + s1 * 0.55 * rowAmt; armR.rotation.x = 1.0 + s1 * 0.55 * rowAmt;
-      armL.rotation.z = -0.35; armR.rotation.z = 0.35;
-      for (const o of boat.oars) { o.piv.rotation.y = -o.s * s1 * 0.55 * rowAmt; o.piv.rotation.z = o.s * (0.25 + c1 * 0.18 * rowAmt); }
+      armL.rotation.x = 0.95 + s1 * 0.5 * rowAmt; armR.rotation.x = 0.95 + s1 * 0.5 * rowAmt;
+      armL.rotation.z = -0.5 - c1 * 0.08 * rowAmt; armR.rotation.z = 0.5 + c1 * 0.08 * rowAmt;
       lantern.rotation.set(Math.sin(T * 1.3) * 0.08, 0, Math.sin(T * 0.9) * 0.08);
     }
 
@@ -423,6 +427,15 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       });
     }
 
+    if (inBoat && boat) {                 // each oar's handle in the hand on its side
+      root.updateMatrixWorld(true);
+      for (const o of boat.oars) {
+        _hand.set(0, -0.36, 0); (o.s < 0 ? armL : armR).localToWorld(_hand); boat.g.worldToLocal(_hand);
+        _dir.subVectors(o.piv.position, _hand); _dir.y *= 0.8; _dir.normalize();
+        o.piv.quaternion.setFromUnitVectors(_xAxis, _dir);
+        o.piv.position.x = 0.74 * o.s;
+      }
+    }
     // lantern flicker
     const fk = Math.sin(T * 7.3) + 0.5 * Math.sin(T * 13.1);
     glow.material.opacity = 0.78 + 0.07 * fk;
