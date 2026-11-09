@@ -53,12 +53,12 @@ function atX(x, d) {                    // ring angle on the near shore whose po
 function ringAt(a, d) { const r = shoreRadius(a) + d; return { x: LAKE.cx + Math.cos(a) * r, z: LAKE.cz + Math.sin(a) * r }; }
 // stone lanterns (k: 1) and candle cairns (k: 0) along the beach, x along the shore and d from the waterline
 const SHORE_LIGHTS = [
-  { x: -6, d: 3.0, k: 1 }, { x: 5.5, d: 5.2, k: 0 }, { x: -15, d: 5.5, k: 0 }, { x: -22, d: 3.5, k: 1 },
+  { x: -13.8, d: 2.6, k: 1 }, { x: 5.5, d: 5.2, k: 0 },   // (the stone lantern stands at the far end of the singing stones, not in front of them) { x: -15, d: 5.5, k: 0 }, { x: -22, d: 3.5, k: 1 },
   { x: 11.5, d: 2.2, k: 1 }, { x: 24, d: 4.0, k: 0 }, { x: 33, d: 3.0, k: 1 }, { x: -37, d: 4.5, k: 1 },
   { x: -30, d: 9.0, k: 0 }, { x: 46, d: 5.0, k: 1 }, { x: -50, d: 3.5, k: 0 },
   // a lantern-lit stretch around the start: tea-light groups (k: 2) and more lanterns in view
   { x: 7.5, d: 4.4, k: 1 }, { x: -2.6, d: 8.6, k: 2 }, { x: 3.2, d: 1.7, k: 2 }, { x: -9.5, d: 6.4, k: 2 },
-  { x: 2.6, d: 8.9, k: 0 }, { x: -12.5, d: 1.8, k: 2 }, { x: 16.5, d: 7.5, k: 2 }, { x: -18.5, d: 9.5, k: 1 },
+  { x: 2.6, d: 8.9, k: 0 }, { x: -12.6, d: 4.6, k: 2 }, { x: 16.5, d: 7.5, k: 2 }, { x: -18.5, d: 9.5, k: 1 },
 ].map(L => { const p = ringAt(atX(L.x, L.d), L.d); return { x: p.x, z: p.z, k: L.k }; });
 // trees standing in the shallows at the ends of the start beach: lake-side of anywhere the character
 // can stand, so the follow camera (always land-side) never looks through them
