@@ -203,6 +203,26 @@ export class Audio {
     else if (kind === 'pluck') note([[1, 1, 1.1, 'triangle'], [2, 0.3, 0.45], [3, 0.1, 0.25]]);   // a soft picked string
     else if (kind === 'bass') note([[1, 1, 2.6], [2, 0.25, 1.2]]);
   }
+  // the whale's song: two low voices gliding slowly, through a soft filter and the echo
+  whaleSong() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 2;
+    const out = ctx.createGain(); out.gain.value = 0.9; lp.connect(out); out.connect(this.master); if (this.echo) out.connect(this.echo);
+    const call = (t0, f0, f1, f2, dur, amp) => {
+      for (const [mul, a, type] of [[1, 1, 'sine'], [2, 0.25, 'triangle'], [3.01, 0.08, 'sine']]) {
+        const o = ctx.createOscillator(); o.type = type;
+        o.frequency.setValueAtTime(f0 * mul, t0); o.frequency.exponentialRampToValueAtTime(f1 * mul, t0 + dur * 0.45); o.frequency.exponentialRampToValueAtTime(f2 * mul, t0 + dur);
+        const vib = ctx.createOscillator(); vib.frequency.value = 5.2; const vg = ctx.createGain(); vg.gain.value = f1 * mul * 0.012; vib.connect(vg); vg.connect(o.frequency);
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(amp * a, t0 + dur * 0.3); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        o.connect(g); g.connect(lp); o.start(t0); o.stop(t0 + dur + 0.1); vib.start(t0); vib.stop(t0 + dur + 0.1);
+      }
+    };
+    call(t + 0.2, 180, 320, 240, 3.2, 0.09);
+    call(t + 3.8, 260, 420, 210, 3.8, 0.07);
+    call(t + 9.5, 150, 230, 120, 4.5, 0.08);
+    this.chime([523.25, 659.25, 783.99, 1046.5, 1318.5], 0.18, 0.4);
+  }
   // a singing stone: a soft marimba-like knock with a bell overtone; vol by how near it is
   stone(f, vol = 1) {
     if (!this.ctx || vol < 0.02) return;

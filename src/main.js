@@ -7,6 +7,7 @@ import { serverUrl } from './config.js';
 import { LITE, SOFTWARE_GPU } from './quality.js';
 import { createCat } from './cat.js';
 import { createStones, NOTES } from './stones.js';
+import { createWhale } from './whale.js';
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
 import * as shore from './shore.js';
@@ -967,6 +968,7 @@ function update(dt) {
   if (beach) beach.update(dt, walker.pos);
   updateTapMark(dt);
   updateLanterns(dt);
+  updateWhale(dt);
   updateSparks(dt);
   updateStar(dt);
   for (const r of others.values()) r.w.update(dt, NO_KEYS, T);
@@ -1455,6 +1457,24 @@ async function goLake(n) {
   } else toast('지금은 그 호수로 갈 수 없어요 · 잠시 뒤 다시 해 보세요', 3200);
 }
 $('stats').onclick = (e) => { e.stopPropagation(); audio.start(); if (screen === 'lakes') closePanel('lakes'); else openLakes(); };
+// ---- the whale of light: on the shared clock (whale.js), so the lake sees it together
+const whale = createWhale(scene, GLOW);
+function whaleArrives() {
+  if (screen === 'title') return;
+  audio.whaleSong();
+  toast('🐋 빛의 고래가 나타났어요!', 4200);
+}
+function updateWhale(dt) {
+  if (whale.schedule(Date.now(), slotHash)) whaleArrives();
+  whale.update(dt, T);
+  if (!whale.active) return;
+  // lanterns it passes are lifted on its back for a moment and glow brighter
+  for (const L of lanterns) {
+    if (L.mode !== 'water') continue;
+    const k = whale.lift(L.x, L.z); if (k <= 0) continue;
+    L.group.position.y += k * 1.6; L.glow.scale.multiplyScalar(1 + k * 0.8); L.glow.material.opacity = Math.min(1, L.glow.material.opacity + k * 0.4);
+  }
+}
 // ---- singing stones at the water's edge: tap to play; the lake hears it too
 const stones = createStones(scene, shore, GLOW);
 function playStone(i, remote) {
@@ -1847,6 +1867,8 @@ window.__studio.catScreen = () => { const v = new THREE.Vector3(cat.pos.x, cat.p
 window.__studio.stone = (i) => playStone(i, false);
 window.__studio.stoneK = () => stones.stones.map(s => +s.k.toFixed(2));
 window.__studio.stoneScreen = (i) => { const s = stones.stones[i]; const v = new THREE.Vector3(s.x, s.y + 0.2, s.z).project(camera); return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight }; };
+window.__studio.whale = () => { whale.start(0.3, 0.6); whaleArrives(); return true; };
+window.__studio.whalePos = () => { const p = whale.pos; return { x: +p.x.toFixed(1), y: +p.y.toFixed(1), z: +p.z.toFixed(1), active: whale.active }; };
 window.__studio.openId = (id) => { const L = lanterns.find(l => l.id === id); if (L) openCard(L); return !!L; };
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];
