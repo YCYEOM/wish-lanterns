@@ -89,7 +89,7 @@ export class ServerNet {
     if (!sameLake) this.hooks.onLake && this.hooks.onLake(d.lake);
     this.hooks.onPresence(this.n);
     this.lastPos = null;
-    for (const p of d.peers || []) { this.ids.add(p.id); this.hooks.onPos && this.hooks.onPos(p.id, { x: p.x, z: p.z, cer: null, s: p.s | 0, sit: !!p.sit }); }
+    for (const p of d.peers || []) { this.ids.add(p.id); this.hooks.onPos && this.hooks.onPos(p.id, { x: p.x, z: p.z, cer: null, s: p.s | 0, sit: !!p.sit, b: !!p.b }); }
     for (const l of (d.lanterns || []).slice().reverse()) {
       if (!l || l.o === this.owner) continue;
       this.hooks.onLantern({ netId: `${l.o}:${l.k}`, text: l.tx || '', color: l.c, mode: l.m === 'sky' ? 'sky' : 'water', hearts: l.hearts | 0 }, '', false);
@@ -111,7 +111,7 @@ export class ServerNet {
       case 'p':
         if (!Number.isFinite(d.x) || !Number.isFinite(d.z)) return;
         this.ids.add(d.id);
-        this.hooks.onPos && this.hooks.onPos(d.id, { x: d.x, z: d.z, cer: d.cer === 'water' || d.cer === 'sky' ? d.cer : null, s: d.s | 0, sit: !!d.sit });
+        this.hooks.onPos && this.hooks.onPos(d.id, { x: d.x, z: d.z, cer: d.cer === 'water' || d.cer === 'sky' ? d.cer : null, s: d.s | 0, sit: !!d.sit, b: !!d.b });
         break;
       case 'l':
         if (typeof d.o !== 'string' || typeof d.k !== 'string' || d.o === this.owner) return;
@@ -134,17 +134,18 @@ export class ServerNet {
   sendNote(i) { if (this.n > 1) this.send({ t: 'n', i }); }
   report(netId) { this.send({ t: 'r', id: netId }); return true; }
   sendEmote(k) { if (this.n > 1) this.send({ t: 'e', k }); }
-  sendPos(x, z, cer, scarf, sit = false) {
+  sendPos(x, z, cer, scarf, sit = false, boat = false) {
+    if (this.lastPos && this.lastPos.b !== !!boat) this.lastPos = null;   // getting in or out is sent at once
     this.scarf = scarf | 0;
     if (!this.ws || this.n < 2) return;
     const t = Date.now(), L = this.lastPos;
-    if (L && L.sit !== !!sit) { this.lastPos = { x, z, t, sit: !!sit }; this.send({ t: 'p', x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: this.scarf, sit: sit ? 1 : 0 }); return; }
+    if (L && L.sit !== !!sit) { this.lastPos = { x, z, t, sit: !!sit, b: !!boat }; this.send({ t: 'p', x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: this.scarf, sit: sit ? 1 : 0, b: boat ? 1 : 0 }); return; }
     // the server keeps where everyone last stood (newcomers get it on joining), so standing still needs only
     // a rare refresh; while walking ~2.5 a second is plenty, the others' characters walk smoothly to each point
     if (L && !cer && Math.hypot(x - L.x, z - L.z) < 0.25 && t - L.t < 15000) return;
     if (L && !cer && t - L.t < POS_MS) return;
-    this.lastPos = { x, z, t, sit: !!sit };
-    this.send({ t: 'p', x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: this.scarf, sit: sit ? 1 : 0 });
+    this.lastPos = { x, z, t, sit: !!sit, b: !!boat };
+    this.send({ t: 'p', x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: this.scarf, sit: sit ? 1 : 0, b: boat ? 1 : 0 });
   }
 
   // the head count of every lake, for the lake chooser (null if the server cannot say)

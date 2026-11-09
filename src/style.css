@@ -246,3 +246,9 @@ body.hud-off #netline { display: none; }
 .share-panel { text-align: center; }
 .share-panel img { display: block; margin: 0 auto 14px; max-width: 100%; max-height: min(58vh, 560px); border-radius: 14px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
 @media (max-height: 520px) { .share-panel img { max-height: 52vh; } }
+
+/* the rowboat: a pill bottom-left (in / out), and the launch button steps aside while afloat */
+.boat-btn { position: absolute; left: 18px; bottom: 36px; padding: 11px 18px; border-radius: 24px; border: 1px solid rgba(160,210,255,.5);
+  background: rgba(14,30,60,.85); color: #e6f3ff; font-size: 15px; font-family: inherit; cursor: pointer; box-shadow: 0 0 18px rgba(120,190,255,.3); }
+.boat-btn:active { transform: scale(.95); }
+@media (max-width: 420px) { .boat-btn { bottom: 100px; left: 12px; padding: 9px 14px; font-size: 14px; } }

@@ -255,3 +255,18 @@ https://ycyeom.github.io/wish-lanterns/
   `idTime(id)` recovers the launch time from the id ('m' + Date.now() base 36), repairs such logs on load, and
   `starEntries()` also counts save.mine lanterns missing from the log. Diary: "⭐ 내 별자리 보러 가기" lifts the
   view to the constellation (or says when the first stars come). Stars brighter/larger. `.studio/stars-old.mjs`.
+
+## Cat, singing stones, whale of light, rowboat
+- Cat (`src/cat.js`): grey tabby, follows on the left a little ahead (away from the lantern hand, in view), sits /
+  grooms / looks at you, curls up beside you when you sit (purr), meows with a 💗 when tapped; `save.catBond`
+  (minutes together) brings it closer and makes it purr more. Local to each player. It waits on the shore while
+  you row.
+- Singing stones (`src/stones.js`): 7 pentatonic stones on the wet sand left of the start; tap → note, rune
+  glow, ring on the water; relayed to the lake (`{t:'n',i}`, server 6/s; P2P action 'note'), quieter with distance.
+- Whale of light (`src/whale.js`): shared clock slot 420 s, half the slots → ~every 12 min for everyone at once;
+  30 s: rises, crosses in front of the shore, leaps, dives; additive fresnel body with inner stars, dimmer under
+  water; sparkles; lifts and brightens water lanterns it passes; whale song. `__studio.whale()`.
+- Rowboat (walker.js `board/unboard/setBoat/updateBoat`): ⛵ at the water's edge → afloat 2.6 m out; W/S row,
+  A/D turn, tap water to row there, lanterns tappable; camera follows the heading; lantern hangs at the bow;
+  🏝 back to the nearest walkable shore. Launch / emotes hidden afloat. Positions carry `b` (server keeps it).
+  Tests: `.studio/cat.mjs`, `stones.mjs`, `whale.mjs`, `boat.mjs` (local server for the shared ones).

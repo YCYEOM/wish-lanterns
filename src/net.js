@@ -98,7 +98,7 @@ export class Net {
       this.sendPosAction.onMessage = (d, meta) => {
         const id = meta && meta.peerId;
         if (room !== this.room || !id || !d || !isFinite(d.x) || !isFinite(d.z) || Math.abs(d.x) > 400 || Math.abs(d.z) > 400) return;
-        this.hooks.onPos && this.hooks.onPos(id, { x: +d.x, z: +d.z, cer: d.cer === 'water' || d.cer === 'sky' ? d.cer : null, s: d.s | 0, sit: !!d.sit });
+        this.hooks.onPos && this.hooks.onPos(id, { x: +d.x, z: +d.z, cer: d.cer === 'water' || d.cer === 'sky' ? d.cer : null, s: d.s | 0, sit: !!d.sit, b: !!d.b });
       };
       this.sendNoteAction = room.makeAction('note');
       this.sendNoteAction.onMessage = (d, meta) => { if (room === this.room && d && Number.isInteger(d.i)) this.hooks.onNote && this.hooks.onNote(meta && meta.peerId, d.i); };
@@ -174,14 +174,14 @@ export class Net {
   // share where we stand: when we move more than a step, start a launch pose, or every few seconds anyway
   sendNote(i) { if (this.sendNoteAction && this.peers > 0) { try { this.sendNoteAction.send({ i }); } catch {} } }
   sendEmote(k) { if (this.sendEmoteAction && this.peers > 0) { try { this.sendEmoteAction.send({ k }); } catch {} } }
-  sendPos(x, z, cer, scarf, sit = false) {
+  sendPos(x, z, cer, scarf, sit = false, boat = false) {
     if (!this.sendPosAction || this.peers === 0) return;
     const t = Date.now(), L = this.lastPos;
-    const sitChanged = L && L.sit !== !!sit;
+    const sitChanged = L && (L.sit !== !!sit || L.b !== !!boat);
     if (!sitChanged && L && !cer && Math.hypot(x - L.x, z - L.z) < 0.25 && t - L.t < 3000) return;
     if (!sitChanged && L && !cer && t - L.t < 200) return;
-    this.lastPos = { x, z, t, sit: !!sit };
-    try { this.sendPosAction.send({ x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: scarf, sit: sit ? 1 : 0 }); } catch {}
+    this.lastPos = { x, z, t, sit: !!sit, b: !!boat };
+    try { this.sendPosAction.send({ x: +x.toFixed(2), z: +z.toFixed(2), cer: cer || 0, s: scarf, sit: sit ? 1 : 0, b: boat ? 1 : 0 }); } catch {}
   }
 
   statusLine() {

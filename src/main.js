@@ -974,7 +974,8 @@ function update(dt) {
   for (const r of others.values()) r.w.update(dt, NO_KEYS, T);
   updateCat(dt);
   stones.update(dt, T);
-  if (screen !== 'title') net.sendPos(walker.pos.x, walker.pos.z, null, myScarf, walker.sitting);
+  if (screen !== 'title') net.sendPos(walker.pos.x, walker.pos.z, null, myScarf, walker.sitting, walker.inBoat);
+  updateBoatUI();
   atmos.update(dt);
   scene.fog.density = 0.0042 + uniforms.fogK.value * 0.0095;
   scene.fog.color.copy(FOG_NIGHT).lerp(FOG_MIST, uniforms.fogK.value);
@@ -1091,7 +1092,7 @@ const netHooks = {
     }
     if (Math.hypot(d.x - r.w.pos.x, d.z - r.w.pos.z) > 8) r.w.reset(d.x, d.z);   // jumped (reload, another path): no long walk
     if (d.cer && !r.w.busy()) r.w.ceremony(d.cer);
-    else if (!d.cer) { r.w.walkTo(d.x, d.z); r.w.setSitting(!!d.sit); }
+    else if (!d.cer) { r.w.setBoat(!!d.b); r.w.walkTo(d.x, d.z); if (!d.b) r.w.setSitting(!!d.sit); }
   },
   // a lantern taken down (reported by several people, or by the admin): it leaves every screen
   onRemove(id) { const L = lanterns.find((l) => l.id === id && !l.mine); if (L) { if (selected === L) closeCard(); removeLantern(L); } },
@@ -1457,6 +1458,29 @@ async function goLake(n) {
   } else toast('지금은 그 호수로 갈 수 없어요 · 잠시 뒤 다시 해 보세요', 3200);
 }
 $('stats').onclick = (e) => { e.stopPropagation(); audio.start(); if (screen === 'lakes') closePanel('lakes'); else openLakes(); };
+// ---- the rowboat: ⛵ at the water's edge to get in, 🏝 to get out at the nearest shore
+let boatShown = '', tipOnShore = '';
+function updateBoatUI() {
+  const st = walker.state();
+  const want = screen !== 'lake' && screen !== 'card' ? '' : walker.inBoat ? 'out' : (st.nearWater && !walker.busy() ? 'in' : '');
+  if (want === boatShown) return;
+  boatShown = want;
+  $('boatBtn').classList.toggle('hidden', !want);
+  $('boatBtn').textContent = want === 'out' ? '🏝 내리기' : '⛵ 배 타기';
+  $('launchBtn').classList.toggle('hidden', walker.inBoat || walker.busy());
+  $('emoteBtn').classList.toggle('hidden', walker.inBoat);
+}
+$('boatBtn').onclick = (e) => {
+  e.stopPropagation(); audio.start(); closeCard();
+  if (walker.inBoat) {
+    if (walker.unboard()) { audio.plop(); $('tip').textContent = tipOnShore; toast('🏝 물가로 돌아왔어요', 2200); }
+  } else if (walker.board()) {
+    audio.plop(); tipOnShore = $('tip').textContent;
+    $('tip').textContent = matchMedia('(pointer: coarse)').matches ? '물을 누르면 그쪽으로 노를 저어요 · 등불을 누르면 가까이서 읽어요' : 'W/S 노 젓기 · A/D 방향 · 물을 누르면 그쪽으로 · 등불을 눌러 읽어요';
+    toast('⛵ 배에 탔어요 · 등불 사이로 노를 저어 가 보세요', 3200);
+  }
+  boatShown = '?'; updateBoatUI();
+};
 // ---- the whale of light: on the shared clock (whale.js), so the lake sees it together
 const whale = createWhale(scene, GLOW);
 function whaleArrives() {
@@ -1495,7 +1519,7 @@ const cat = createCat(scene, shore, { bond: save.catBond });
 let catSaveT = 0, purrT = 0;
 function updateCat(dt) {
   const st = walker.state();
-  cat.update(dt, T, { pos: walker.pos, yaw: walker.yaw, moving: st.moving, sitting: walker.sitting, busy: walker.busy() });
+  cat.update(dt, T, { pos: walker.pos, yaw: walker.yaw, moving: st.moving, sitting: walker.sitting, busy: walker.busy(), boat: walker.inBoat });
   if (screen === 'title') return;
   if (Math.hypot(cat.pos.x - walker.pos.x, cat.pos.z - walker.pos.z) < 3) { save.catBond += dt / 60; cat.bond = save.catBond; }
   if ((catSaveT += dt) > 30) { catSaveT = 0; persist(); }
@@ -1685,6 +1709,10 @@ function walkToScreenPoint(cx, cy) {
   if (walker.busy()) return;
   const ndc = new THREE.Vector2((cx / window.innerWidth) * 2 - 1, -(cy / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
+  if (walker.inBoat) {                       // afloat: row toward the tapped water
+    const p = new THREE.Vector3(); if (!raycaster.ray.intersectPlane(waterPlane, p)) return;
+    walker.walkTo(p.x, p.z); showTapMark(p.x, p.z); return;
+  }
   const hit = beach && raycaster.intersectObject(beach.mesh, false)[0];
   const deck = new THREE.Vector3();
   let x, z;

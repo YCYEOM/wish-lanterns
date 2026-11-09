@@ -61,7 +61,7 @@ export function createCat(scene, shore, { coat = 0x7f8798, belly = 0xf4f0ea, bon
   function place(x, z) { pos.set(x, groundY(x, z), z); placed = true; }
 
   function update(dt, T, p) {
-    if (!placed || Math.hypot(p.pos.x - pos.x, p.pos.z - pos.z) > 14) {   // first frame, or the player jumped away
+    if (!placed || (!p.boat && Math.hypot(p.pos.x - pos.x, p.pos.z - pos.z) > 14)) {   // (it waits on the shore while you row)   // first frame, or the player jumped away
       const a = Math.atan2(-Math.sin(p.yaw), -Math.cos(p.yaw)) + 2.4;
       let x = p.pos.x + Math.cos(a) * 1.4, z = p.pos.z + Math.sin(a) * 1.4;
       if (!walkable(x, z)) { x = p.pos.x + 0.6; z = p.pos.z + 0.6; }

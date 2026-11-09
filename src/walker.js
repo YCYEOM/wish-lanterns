@@ -214,7 +214,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
   const view = { yaw: 0, pitch: 0, wYaw: 0, wPitch: 0 };
   const YAW_MAX = 2.4, PITCH_MIN = -0.55, PITCH_MAX = 0.6;
   function viewDir() {                   // unit {x, z}: where the camera looks (the lake direction turned by the view yaw)
-    const f = lakeDir(), c = Math.cos(view.yaw), s = Math.sin(view.yaw);
+    const f = inBoat ? { x: -Math.sin(yaw), z: -Math.cos(yaw) } : lakeDir(), c = Math.cos(view.yaw), s = Math.sin(view.yaw);
     return { x: f.x * c - f.z * s, z: f.x * s + f.z * c };
   }
   // launch ceremony: kneel to set a lantern on the water, or lift it overhead for the sky
@@ -224,6 +224,32 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
   let emo = null, sitting = false, sitAmt = 0;
   const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, opacity: 0 }));
   bubble.scale.setScalar(0.62); bubble.visible = false; bubble.renderOrder = 5; root.add(bubble);
+  // the rowboat (built the first time it is used): the character sits on the bench and rows; the lantern
+  // hangs from a little pole at the bow while afloat
+  let boat = null, inBoat = false, rowPh = 0, rowAmt = 0, boatSpeed = 0;
+  const waterOK = (x, z) => waterDist(x, z) < -1.6;
+  function buildBoat() {
+    const g = new THREE.Group(); g.visible = false; root.add(g);
+    const hullMat = lam(0x7a5236, { emissive: 0x24160c }), rim = lam(0x5a3a26, { emissive: 0x1a100a });
+    const hullGeo = new THREE.SphereGeometry(1, 14, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2); hullGeo.scale(0.78, 0.42, 1.95);
+    const hull = new THREE.Mesh(hullGeo, new THREE.MeshLambertMaterial({ color: 0x7a5236, emissive: 0x24160c, flatShading: true, side: THREE.DoubleSide }));
+    hull.position.y = 0.32; g.add(hull);
+    const gun = new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 5, 24), rim); gun.rotation.x = Math.PI / 2; gun.scale.set(0.78, 1.95, 1); gun.position.y = 0.32; g.add(gun);
+    for (const z of [-0.2, 0.75]) { const b = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.06, 0.32), hullMat); b.position.set(0, 0.28, z); g.add(b); }
+    const oars = [-1, 1].map((s) => {
+      const piv = new THREE.Group(); piv.position.set(0.76 * s, 0.36, 0.05); g.add(piv);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.9, 5), rim); shaft.rotation.z = Math.PI / 2; shaft.position.x = 0.55 * s; piv.add(shaft);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.03, 0.18), hullMat); blade.position.x = 1.4 * s; piv.add(blade);
+      return { piv, s };
+    });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.9, 5), rim); pole.position.set(0, 0.7, -1.7); pole.rotation.x = -0.35; g.add(pole);
+    const hook = new THREE.Group(); hook.position.set(0, 1.12, -1.86); g.add(hook);
+    return { g, oars, hook };
+  }
+  function lanternToBoat(on) {
+    if (on) { boat.hook.add(lantern); lantern.position.set(0, 0, 0); lantern.rotation.set(0, 0, 0); staff.children[0].visible = false; }
+    else { staff.add(lantern); lantern.position.set(0, 0.42, 0); staff.children[0].visible = true; }
+  }
   const CER = { water: { dur: 3.6, release: 1.7 }, sky: { dur: 3.0, release: 1.35 } };
   const smooth = (a, b, t) => { const x = Math.max(0, Math.min(1, (t - a) / (b - a))); return x * x * (3 - 2 * x); };
 
@@ -255,7 +281,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
   const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
   function animate(dt, T) {
-    const speed = Math.hypot(vel.x, vel.z);
+    const speed = inBoat ? 0 : Math.hypot(vel.x, vel.z);
     const wa = Math.min(1, speed / SPEED);
     walkAmt += (wa - walkAmt) * Math.min(1, dt * 8);
     phase += dt * (2.0 + speed * 2.1);
@@ -304,7 +330,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     }
 
     // emotes on top of everything else
-    sitAmt += ((sitting ? 1 : 0) - sitAmt) * Math.min(1, dt * 3.5);
+    sitAmt += ((sitting || inBoat ? 1 : 0) - sitAmt) * Math.min(1, dt * 3.5);
     let wave = 0, bow = 0, heart = 0, jump = 0, hopY = 0;
     if (emo) {
       emo.t += dt;
@@ -347,11 +373,18 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       armL.rotation.x = mix(armL.rotation.x, 0.25, bow); armL.rotation.z = mix(armL.rotation.z, 0.1, bow);
       legL.rotation.x += BOW * bow; legR.rotation.x += BOW * bow;
     }
-    fig.position.y = hopY * 0.38;
+    fig.position.y = hopY * 0.38 + (inBoat ? 0.3 : 0);
+    if (inBoat) {                         // rowing: both hands pull the oars in a slow circle, the body leans with the stroke
+      const s1 = Math.sin(rowPh), c1 = Math.cos(rowPh);
+      armL.rotation.x = 1.0 + s1 * 0.55 * rowAmt; armR.rotation.x = 1.0 + s1 * 0.55 * rowAmt;
+      armL.rotation.z = -0.35; armR.rotation.z = 0.35;
+      for (const o of boat.oars) { o.piv.rotation.y = -o.s * s1 * 0.55 * rowAmt; o.piv.rotation.z = o.s * (0.25 + c1 * 0.18 * rowAmt); }
+      lantern.rotation.set(Math.sin(T * 1.3) * 0.08, 0, Math.sin(T * 0.9) * 0.08);
+    }
 
     // body: bob twice per stride, roll into turns, lean into speed, breathe when still
     body.position.y = 0.5 + Math.abs(c) * 0.055 * w + breathe * 0.008 - kneel * 0.26 + lift * 0.03 - sitAmt * 0.36;
-    body.rotation.x = -0.12 * w - Math.max(-0.1, Math.min(0.1, aFwd * 0.012)) - kneel * 0.35 + lift * 0.08 - bow * BOW + sitAmt * 0.12;
+    body.rotation.x = -0.12 * w - Math.max(-0.1, Math.min(0.1, aFwd * 0.012)) - kneel * 0.35 + lift * 0.08 - bow * BOW + sitAmt * 0.12 + (inBoat ? Math.sin(rowPh) * 0.16 * rowAmt : 0);
     body.rotation.z = s * 0.04 * w - Math.max(-0.25, Math.min(0.25, turnRate * 0.05)) * w;
     body.rotation.y = s * 0.08 * w;
     mantle.scale.y = 0.55 + breathe * 0.02;
@@ -371,8 +404,10 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     const k = 40, damp = 3.2;
     swingV += (-k * swing - damp * swingV + aFwd * 0.9 + s * 1.6 * w) * dt;
     swing += swingV * dt;
-    lantern.rotation.x = handA + swing;
-    lantern.rotation.z = -armR.rotation.z - staff.rotation.z - body.rotation.z + Math.sin(T * 1.3) * 0.04;
+    if (!inBoat) {
+      lantern.rotation.x = handA + swing;
+      lantern.rotation.z = -armR.rotation.z - staff.rotation.z - body.rotation.z + Math.sin(T * 1.3) * 0.04;
+    }
 
     // cloak and scarf trail behind with speed
     flareS += (w - flareS) * Math.min(1, dt * 3);
@@ -402,6 +437,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       vel.x = vel.z = 0; lastVx = lastVz = 0; turnRate = 0; swing = swingV = 0; walkAmt = 0; flareS = 0; raise = 0; idleT = 0;
       target = null; onArrive = null; cam.init = false; cam.boom = undefined; moving = false; cer = null; kneel = lift = 0;
       emo = null; sitting = false; sitAmt = 0; bubble.visible = false; fig.position.y = 0;
+      if (inBoat && !opts.remote) this.setBoat(false);
       view.yaw = view.pitch = view.wYaw = view.wPitch = 0;
     },
     // start the launch pose; returns its timing { dur, release } (seconds)
@@ -412,9 +448,40 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       emo = null; sitting = false; bubble.visible = false;
       return CER[cer.mode];
     },
+    // into the rowboat a little way out from the shore here, facing the lake; false if it cannot be done
+    board() {
+      if (cer || inBoat) return false;
+      let p = null;
+      for (const d of [-2.6, -3.6, -5]) { const q = shore.nearestShore(pos.x, pos.z, d); if (waterOK(q.x, q.z)) { p = q; break; } }
+      if (!p) return false;
+      this.setBoat(true);
+      pos.set(p.x, 0, p.z); yaw = Math.atan2(-(LAKE.cx - p.x), -(LAKE.cz - p.z));
+      cam.init = false; cam.boom = undefined;
+      return true;
+    },
+    // back onto the sand at the nearest shore
+    unboard() {
+      if (!inBoat) return false;
+      let p = null;
+      for (const d of [1.4, 2.4, 3.6, 5]) { const q = shore.nearestShore(pos.x, pos.z, d); if (walkable(q.x, q.z)) { p = q; break; } }
+      if (!p) return false;
+      this.setBoat(false);
+      pos.set(p.x, groundY(p.x, p.z), p.z); yaw = Math.atan2(-(LAKE.cx - p.x), -(LAKE.cz - p.z));
+      cam.init = false; cam.boom = undefined;
+      return true;
+    },
+    // afloat or not without moving (another player's boat follows their position updates)
+    setBoat(on) {
+      on = !!on; if (on === inBoat) return;
+      if (on && !boat) boat = buildBoat();
+      inBoat = on; boat.g.visible = on; lanternToBoat(on);
+      target = null; onArrive = null; vel.x = vel.z = 0; boatSpeed = 0; sitting = false; emo = null; bubble.visible = false;
+      if (!on) { root.rotation.set(0, yaw, 0); fig.position.y = 0; }
+    },
+    get inBoat() { return inBoat; },
     // a little action: 'wave' | 'bow' | 'jump' | 'heart' (one-shot), or 'sit' (toggles; moving stands up again)
     emote(kind) {
-      if (cer) return false;
+      if (cer || inBoat) return false;
       if (kind === 'sit') { sitting = !sitting; emo = null; bubble.visible = false; target = null; onArrive = null; return true; }
       if (!EMOTES[kind]) return false;
       sitting = false;
@@ -437,6 +504,11 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     get timing() { return cer && { t: cer.t, ...CER[cer.mode] }; },
     walkTo(x, z, cb) {
       // clamp the goal onto the beach: step it back toward the character until it is walkable
+      if (inBoat) {                       // afloat: row toward a point on open water
+        let gx = x, gz = z;
+        for (let i = 0; i < 40 && !waterOK(gx, gz); i++) { gx += (pos.x - gx) * 0.12; gz += (pos.z - gz) * 0.12; }
+        target = { x: gx, z: gz }; onArrive = cb || null; return;
+      }
       if (Math.hypot(x - pos.x, z - pos.z) > 0.3) sitting = false;   // walking off stands up
       let gx = x, gz = z;
       for (let i = 0; i < 40 && !walkable(gx, gz); i++) { gx += (pos.x - gx) * 0.12; gz += (pos.z - gz) * 0.12; }
@@ -453,6 +525,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     },
     get view() { return { yaw: +view.wYaw.toFixed(3), pitch: +view.wPitch.toFixed(3) }; },
     update(dt, keys, T) {
+      if (inBoat) return this.updateBoat(dt, keys, T);
       const f = viewDir();                 // "forward" is where the camera looks (the lake, unless turned)
       const rx = -f.z, rz = f.x;           // screen-right
       let ix = 0, iz = 0;
@@ -496,6 +569,39 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       animate(dt, T);
       return moving;
     },
+    // afloat: W/S row forward and back, A/D turn (or row toward a tapped point); a boat drifts on, slowly
+    updateBoat(dt, keys, T) {
+      let fwd = 0, turn = 0;
+      if (keys.has('KeyW') || keys.has('ArrowUp')) fwd += 1;
+      if (keys.has('KeyS') || keys.has('ArrowDown')) fwd -= 0.6;
+      if (keys.has('KeyA') || keys.has('ArrowLeft')) turn += 1;
+      if (keys.has('KeyD') || keys.has('ArrowRight')) turn -= 1;
+      if (fwd || turn) { target = null; onArrive = null; }
+      else if (target) {
+        const dx = target.x - pos.x, dz = target.z - pos.z, l = Math.hypot(dx, dz);
+        if (l < 1.2) { const cb = onArrive; target = null; onArrive = null; if (cb) cb(); }
+        else {
+          const d = wrap(Math.atan2(-dx, -dz) - yaw);
+          turn = Math.max(-1, Math.min(1, d * 2.2));
+          fwd = Math.abs(d) < 1.1 ? Math.min(1, l / 4 + 0.25) : 0.15;
+        }
+      }
+      yaw = wrap(yaw + turn * 1.15 * dt);
+      boatSpeed += (fwd * 2.8 - boatSpeed) * Math.min(1, dt * (fwd ? 1.4 : 0.6));
+      const hx = -Math.sin(yaw), hz = -Math.cos(yaw);
+      const nx = pos.x + hx * boatSpeed * dt, nz = pos.z + hz * boatSpeed * dt;
+      if (waterOK(nx, nz)) { pos.x = nx; pos.z = nz; } else { boatSpeed *= -0.25; target = null; }
+      vel.x = hx * boatSpeed; vel.z = hz * boatSpeed;
+      turnRate += (turn * 1.15 - turnRate) * Math.min(1, dt * 4);
+      moving = Math.abs(boatSpeed) > 0.25 || !!turn;
+      rowAmt += ((fwd || turn ? 1 : 0) - rowAmt) * Math.min(1, dt * 3);
+      rowPh += dt * 3.4 * Math.max(0.15, rowAmt);
+      pos.y = 0;
+      root.position.set(pos.x, Math.sin(T * 1.3) * 0.04, pos.z);
+      root.rotation.set(Math.sin(T * 1.1) * 0.025, yaw, Math.cos(T * 0.9) * 0.03);
+      animate(dt, T);
+      return moving;
+    },
     updateCamera(camera, dt, look = { x: 0, y: 0 }) {
       const ve = 1 - Math.exp(-dt * 10);
       view.yaw += (view.wYaw - view.yaw) * ve; view.pitch += (view.wPitch - view.pitch) * ve;
@@ -530,7 +636,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     },
     state() {
       const d = waterDist(pos.x, pos.z);
-      return { x: +pos.x.toFixed(2), z: +pos.z.toFixed(2), yaw: +yaw.toFixed(3), moving, nearWater: d < NEAR_WATER, waterDist: +d.toFixed(2), sitting, emote: emo ? emo.kind : null };
+      return { x: +pos.x.toFixed(2), z: +pos.z.toFixed(2), yaw: +yaw.toFixed(3), moving, nearWater: d < NEAR_WATER, waterDist: +d.toFixed(2), sitting, emote: emo ? emo.kind : null, boat: inBoat };
     },
     NEAR_WATER,
     // take this character out of the world (another player left)
