@@ -203,6 +203,16 @@ export class Audio {
     else if (kind === 'pluck') note([[1, 1, 1.1, 'triangle'], [2, 0.3, 0.45], [3, 0.1, 0.25]]);   // a soft picked string
     else if (kind === 'bass') note([[1, 1, 2.6], [2, 0.25, 1.2]]);
   }
+  // a singing stone: a soft marimba-like knock with a bell overtone; vol by how near it is
+  stone(f, vol = 1) {
+    if (!this.ctx || vol < 0.02) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    for (const [mul, a, d] of [[1, 0.16, 1.6], [4, 0.04, 0.35], [2.76, 0.03, 0.9], [0.5, 0.05, 0.8]]) {
+      const o = ctx.createOscillator(); o.frequency.value = f * mul;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(a * vol, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.connect(g); g.connect(this.master); if (this.echo) g.connect(this.echo); o.start(t); o.stop(t + d + 0.05);
+    }
+  }
   // the cat: a short meow (a sawtooth through two formant filters, pitch rising then falling)
   meow() {
     if (!this.ctx) return;

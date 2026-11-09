@@ -238,6 +238,12 @@ export class Lake extends DurableObject {
         this.broadcast({ t: 'e', id: me.id, k: d.k }, ws);
         return;
       }
+      case 'n': {                                    // a singing stone rung: everyone here hears it (a few a second at most)
+        const s = Math.floor(now / 1000); if (r.ns !== s) { r.ns = s; r.nn = 0; }
+        if (++r.nn > 6 || !Number.isInteger(d.i) || d.i < 0 || d.i > 6) return;
+        this.broadcast({ t: 'n', id: me.id, i: d.i }, ws);
+        return;
+      }
       case 'w': {                                    // a wish on a shared shooting star
         if (now - r.w < 3000) return; r.w = now;
         const h = str(d.h, 60); if (!h || !Number.isFinite(d.s)) return;

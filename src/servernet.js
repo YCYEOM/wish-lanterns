@@ -118,6 +118,7 @@ export class ServerNet {
         this.hooks.onLantern({ netId: `${d.o}:${d.k}`, text: d.tx || '', color: d.c, mode: d.m === 'sky' ? 'sky' : 'water' }, '', true, d.id);
         break;
       case 'h': if (typeof d.id === 'string') this.hooks.onHeart(d.id, typeof d.h === 'string' ? d.h : null); break;
+      case 'n': if (Number.isInteger(d.i)) this.hooks.onNote && this.hooks.onNote(d.id, d.i); break;
       case 'rm': if (typeof d.id === 'string') this.hooks.onRemove && this.hooks.onRemove(d.id); break;
       case 'e': if (typeof d.id === 'string' && typeof d.k === 'string') this.hooks.onEmote && this.hooks.onEmote(d.id, d.k); break;
       case 'w': if (Number.isFinite(d.s) && typeof d.h === 'string') this.hooks.onWish && this.hooks.onWish(d.s, d.h); break;
@@ -130,6 +131,7 @@ export class ServerNet {
   sendWish(slot, h) { if (this.n > 1) this.send({ t: 'w', s: slot, h }); }
   poll() {}
 
+  sendNote(i) { if (this.n > 1) this.send({ t: 'n', i }); }
   report(netId) { this.send({ t: 'r', id: netId }); return true; }
   sendEmote(k) { if (this.n > 1) this.send({ t: 'e', k }); }
   sendPos(x, z, cer, scarf, sit = false) {

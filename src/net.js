@@ -100,6 +100,8 @@ export class Net {
         if (room !== this.room || !id || !d || !isFinite(d.x) || !isFinite(d.z) || Math.abs(d.x) > 400 || Math.abs(d.z) > 400) return;
         this.hooks.onPos && this.hooks.onPos(id, { x: +d.x, z: +d.z, cer: d.cer === 'water' || d.cer === 'sky' ? d.cer : null, s: d.s | 0, sit: !!d.sit });
       };
+      this.sendNoteAction = room.makeAction('note');
+      this.sendNoteAction.onMessage = (d, meta) => { if (room === this.room && d && Number.isInteger(d.i)) this.hooks.onNote && this.hooks.onNote(meta && meta.peerId, d.i); };
       this.sendEmoteAction = room.makeAction('emote');
       this.sendEmoteAction.onMessage = (d, meta) => {
         const id = meta && meta.peerId;
@@ -170,6 +172,7 @@ export class Net {
   sendWish(slot, h) { if (this.sendWishAction && this.peers > 0) { try { this.sendWishAction.send({ s: slot, h }); } catch {} } }
 
   // share where we stand: when we move more than a step, start a launch pose, or every few seconds anyway
+  sendNote(i) { if (this.sendNoteAction && this.peers > 0) { try { this.sendNoteAction.send({ i }); } catch {} } }
   sendEmote(k) { if (this.sendEmoteAction && this.peers > 0) { try { this.sendEmoteAction.send({ k }); } catch {} } }
   sendPos(x, z, cer, scarf, sit = false) {
     if (!this.sendPosAction || this.peers === 0) return;

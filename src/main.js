@@ -6,6 +6,7 @@ import { ServerNet } from './servernet.js';
 import { serverUrl } from './config.js';
 import { LITE, SOFTWARE_GPU } from './quality.js';
 import { createCat } from './cat.js';
+import { createStones, NOTES } from './stones.js';
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
 import * as shore from './shore.js';
@@ -31,7 +32,7 @@ function loadSave() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
     return { launched: s.launched | 0, hearts: s.hearts | 0, received: s.received | 0, wishes: s.wishes | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [],
-      log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false, starsSeen: s.starsSeen | 0, catBond: +s.catBond || 0, catMet: !!s.catMet,
+      log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false, starsSeen: s.starsSeen | 0, catBond: +s.catBond || 0, catMet: !!s.catMet, stonesPlayed: !!s.stonesPlayed,
       musicCfg: { ...MUSIC_DEFAULTS, ...(s.musicCfg && typeof s.musicCfg === 'object' ? s.musicCfg : {}) } };
   } catch { return { launched: 0, hearts: 0, received: 0, wishes: 0, hidden: [], hearted: [], mine: [], log: [], heartsBy: {}, lastVisit: 0, music: true, musicCfg: { ...MUSIC_DEFAULTS } }; }
 }
@@ -970,6 +971,7 @@ function update(dt) {
   updateStar(dt);
   for (const r of others.values()) r.w.update(dt, NO_KEYS, T);
   updateCat(dt);
+  stones.update(dt, T);
   if (screen !== 'title') net.sendPos(walker.pos.x, walker.pos.z, null, myScarf, walker.sitting);
   atmos.update(dt);
   scene.fog.density = 0.0042 + uniforms.fogK.value * 0.0095;
@@ -1091,6 +1093,7 @@ const netHooks = {
   },
   // a lantern taken down (reported by several people, or by the admin): it leaves every screen
   onRemove(id) { const L = lanterns.find((l) => l.id === id && !l.mine); if (L) { if (selected === L) closeCard(); removeLantern(L); } },
+  onNote(id, i) { if (Number.isInteger(i) && i >= 0 && i < NOTES.length) playStone(i, true); },
   onEmote(id, k) { const r = others.get(id); if (r) r.w.emote(k); },
   onWish(slot, h) { otherWish(slot, h); },
   onLeave(id) { const r = others.get(id); if (r) { r.w.dispose(); others.delete(id); } },
@@ -1452,6 +1455,21 @@ async function goLake(n) {
   } else toast('지금은 그 호수로 갈 수 없어요 · 잠시 뒤 다시 해 보세요', 3200);
 }
 $('stats').onclick = (e) => { e.stopPropagation(); audio.start(); if (screen === 'lakes') closePanel('lakes'); else openLakes(); };
+// ---- singing stones at the water's edge: tap to play; the lake hears it too
+const stones = createStones(scene, shore, GLOW);
+function playStone(i, remote) {
+  const s = stones.hit(i); if (!s) return;
+  audio.start();
+  const d = Math.hypot(s.x - walker.pos.x, s.z - walker.pos.z);
+  audio.stone(NOTES[i], remote ? Math.max(0, 1 - d / 45) : 1);
+  if (!remote) { net.sendNote && net.sendNote(i); if (!save.stonesPlayed) { save.stonesPlayed = true; persist(); toast('🎐 노래하는 돌이에요 · 같은 호수 사람들에게도 들려요', 3200); } }
+}
+let stoneHintDone = false;
+function stoneHint() {   // the first time you come near them
+  if (stoneHintDone || save.stonesPlayed || screen !== 'lake') return;
+  const s = stones.stones[3];
+  if (Math.hypot(s.x - walker.pos.x, s.z - walker.pos.z) < 6 && Date.now() > toastBusyUntil + 300) { stoneHintDone = true; toast('🎐 물가의 빛나는 돌을 눌러 보세요', 3000); }
+}
 // ---- the lakeside cat: keeps you company; bond grows with minutes spent near it (saved)
 const cat = createCat(scene, shore, { bond: save.catBond });
 let catSaveT = 0, purrT = 0;
@@ -1461,6 +1479,7 @@ function updateCat(dt) {
   if (screen === 'title') return;
   if (Math.hypot(cat.pos.x - walker.pos.x, cat.pos.z - walker.pos.z) < 3) { save.catBond += dt / 60; cat.bond = save.catBond; }
   if ((catSaveT += dt) > 30) { catSaveT = 0; persist(); }
+  stoneHint();
   // curled up beside you while you sit: it purrs now and then (more often as it grows fond of you)
   if (walker.sitting && cat.curled && (purrT -= dt) < 0) { purrT = Math.max(5, 14 - save.catBond); audio.purr(3, Math.min(1, 0.5 + save.catBond / 20)); }
   if (!save.catMet && T > 6 && screen === 'lake' && weatherNoticed && Date.now() > toastBusyUntil + 300) {
@@ -1602,6 +1621,7 @@ function pickLantern(clientX, clientY) {
 let press = null;
 const DRAG_PX = 8;
 function tapAt(cx, cy) {
+  if (screen !== 'title') { const si = stones.pick(camera, cx, cy, window.innerWidth, window.innerHeight); if (si >= 0 && !pickLantern(cx, cy)) { playStone(si, false); return; } }
   if (screen !== 'title' && cat.screenHit(camera, cx, cy, window.innerWidth, window.innerHeight) && !pickLantern(cx, cy)) { petCat(); return; }
   const L = pickLantern(cx, cy);
   if (L) { openCard(L); return; }
@@ -1824,6 +1844,9 @@ window.__studio.ripen = () => { starsForce = true; arriveStars(); return myStarC
 window.__studio.myStars = () => myStarCount;
 window.__studio.cat = () => ({ x: +cat.pos.x.toFixed(2), z: +cat.pos.z.toFixed(2), curled: cat.curled, bond: +save.catBond.toFixed(2), d: +Math.hypot(cat.pos.x - walker.pos.x, cat.pos.z - walker.pos.z).toFixed(2) });
 window.__studio.catScreen = () => { const v = new THREE.Vector3(cat.pos.x, cat.pos.y + 0.25, cat.pos.z).project(camera); return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight }; };
+window.__studio.stone = (i) => playStone(i, false);
+window.__studio.stoneK = () => stones.stones.map(s => +s.k.toFixed(2));
+window.__studio.stoneScreen = (i) => { const s = stones.stones[i]; const v = new THREE.Vector3(s.x, s.y + 0.2, s.z).project(camera); return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight }; };
 window.__studio.openId = (id) => { const L = lanterns.find(l => l.id === id); if (L) openCard(L); return !!L; };
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];
