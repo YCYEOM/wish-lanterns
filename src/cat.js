@@ -17,9 +17,15 @@ export function createCat(scene, shore, { coat = 0x7f8798, belly = 0xf4f0ea, bon
   const fig = new THREE.Group(); fig.scale.setScalar(1.35); root.add(fig);   // faces -z like the walker
 
   const body = new THREE.Group(); body.position.y = 0.2; fig.add(body);
-  const torso = new THREE.Mesh(new THREE.IcosahedronGeometry(0.15, 1), fur); torso.scale.set(0.85, 0.78, 1.55); body.add(torso);
+  const torso = new THREE.Mesh(new THREE.IcosahedronGeometry(0.15, 2), fur); torso.scale.set(0.85, 0.78, 1.55); body.add(torso);
+  // tabby stripes: thin bands that follow the curve of the back (half rings sitting on the body's surface)
+  for (const zt of [-0.55, -0.22, 0.1, 0.42]) {
+    const k = Math.sqrt(1 - zt * zt);                                   // the body's cross-section shrinks toward the ends
+    const arc = new THREE.Mesh(new THREE.TorusGeometry(0.15 * k, 0.011, 4, 14, Math.PI * 0.72), stripe);
+    arc.rotation.set(0, 0, Math.PI * 0.14); arc.scale.set(0.85 * 1.02, 0.78 * 1.02, 1);
+    arc.position.z = zt * 0.15 * 1.55; body.add(arc);
+  }
   const chest = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 1), pale); chest.scale.set(0.9, 0.9, 0.8); chest.position.set(0, -0.03, -0.17); body.add(chest);
-  for (const z of [-0.06, 0.04, 0.13]) { const s = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.035), stripe); s.position.set(0, 0.115, z); body.add(s); }
   const head = new THREE.Group(); head.position.set(0, 0.1, -0.23); body.add(head);
   const skull = new THREE.Mesh(new THREE.IcosahedronGeometry(0.105, 1), fur); skull.scale.set(1.1, 0.95, 0.95); head.add(skull);
   const muzzle = new THREE.Mesh(new THREE.IcosahedronGeometry(0.05, 1), pale); muzzle.scale.set(1.2, 0.8, 0.8); muzzle.position.set(0, -0.035, -0.08); head.add(muzzle);
