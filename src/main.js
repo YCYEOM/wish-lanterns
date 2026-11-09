@@ -1536,7 +1536,7 @@ function updateBoatUI() {
   $('boatBtn').classList.toggle('hidden', !want);
   $('boatBtn').textContent = want === 'out' ? L('🏝 내리기', '🏝 Go ashore') : want === 'ride' ? L('⛵ 같이 타기', '⛵ Ride along') : L('⛵ 배 타기', '⛵ Take the boat');
   $('launchBtn').classList.toggle('hidden', walker.inBoat || walker.riding || walker.busy());
-  $('emoteBtn').classList.toggle('hidden', walker.inBoat);
+  document.querySelector('[data-emote=sit]').classList.toggle('hidden', walker.inBoat || walker.riding);
 }
 $('boatBtn').onclick = (e) => {
   e.stopPropagation(); audio.start(); closeCard();

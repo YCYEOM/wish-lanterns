@@ -230,7 +230,8 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
   // a passenger in someone else's boat: sits on the bow bench facing the rower; the boat is theirs to steer
   let ride = null;
   const SEAT_FWD = 1.05;
-  const _hand = new THREE.Vector3(), _dir = new THREE.Vector3(), _xAxis = new THREE.Vector3(1, 0, 0);
+  const _hand = new THREE.Vector3(), _dir = new THREE.Vector3(), _xAxis = new THREE.Vector3(1, 0, 0), _rest = new THREE.Vector3(), _q = new THREE.Quaternion();
+  let gestureK = 0;
   const waterOK = (x, z) => waterDist(x, z) < -1.6;
   function buildBoat() {
     const g = new THREE.Group(); g.visible = false; root.add(g);
@@ -362,6 +363,13 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       legR.userData.knee.rotation.x = mix(legR.userData.knee.rotation.x, -0.15, sitAmt);
       armL.rotation.x = mix(armL.rotation.x, -0.55, sitAmt); armL.rotation.z = mix(armL.rotation.z, -0.45, sitAmt);
     }
+    if (inBoat) {                         // rowing: both hands pull the oars in a slow circle (a gesture below blends from this)
+      const s1 = Math.sin(rowPh), c1 = Math.cos(rowPh);
+      armL.rotation.x = 0.95 + s1 * 0.5 * rowAmt; armR.rotation.x = 0.95 + s1 * 0.5 * rowAmt;
+      armL.rotation.z = -0.5 - c1 * 0.08 * rowAmt; armR.rotation.z = 0.5 + c1 * 0.08 * rowAmt;
+    }
+    if (inBoat || ride) hopY = 0;         // no hopping out of a boat: the arms still fly up
+    gestureK = Math.max(wave, heart, jump, bow);
     if (wave > 0) {                       // the free hand up, waving side to side
       armL.rotation.x = mix(armL.rotation.x, 2.75, wave);
       armL.rotation.z = mix(armL.rotation.z, -0.35 + Math.sin(T * 11) * 0.38, wave);
@@ -382,12 +390,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       legL.rotation.x += BOW * bow; legR.rotation.x += BOW * bow;
     }
     fig.position.y = hopY * 0.38 + (inBoat || ride ? 0.3 : 0);
-    if (inBoat) {                         // rowing: both hands pull the oars in a slow circle, the body leans with the stroke
-      const s1 = Math.sin(rowPh), c1 = Math.cos(rowPh);
-      armL.rotation.x = 0.95 + s1 * 0.5 * rowAmt; armR.rotation.x = 0.95 + s1 * 0.5 * rowAmt;
-      armL.rotation.z = -0.5 - c1 * 0.08 * rowAmt; armR.rotation.z = 0.5 + c1 * 0.08 * rowAmt;
-      lantern.rotation.set(Math.sin(T * 1.3) * 0.08, 0, Math.sin(T * 0.9) * 0.08);
-    }
+    if (inBoat) lantern.rotation.set(Math.sin(T * 1.3) * 0.08, 0, Math.sin(T * 0.9) * 0.08);
 
     // body: bob twice per stride, roll into turns, lean into speed, breathe when still
     body.position.y = 0.5 + Math.abs(c) * 0.055 * w + breathe * 0.008 - kneel * 0.26 + lift * 0.03 - sitAmt * 0.36;
@@ -436,6 +439,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
         _hand.set(0, -0.36, 0); (o.s < 0 ? armL : armR).localToWorld(_hand); boat.g.worldToLocal(_hand);
         _dir.subVectors(o.piv.position, _hand); _dir.y *= 0.8; _dir.normalize();
         o.piv.quaternion.setFromUnitVectors(_xAxis, _dir);
+        if (gestureK > 0.01) { _rest.set(o.s * 0.8, -0.12, 0.58).normalize(); _q.setFromUnitVectors(_xAxis, _rest); o.piv.quaternion.slerp(_q, Math.min(1, gestureK * 1.4)); }
         o.piv.position.x = 0.74 * o.s;
       }
     }
@@ -509,7 +513,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     get row() { return { ph: rowPh, amt: rowAmt, speed: boatSpeed }; },
     // a little action: 'wave' | 'bow' | 'jump' | 'heart' (one-shot), or 'sit' (toggles; moving stands up again)
     emote(kind) {
-      if (cer || inBoat || (ride && kind === 'sit')) return false;
+      if (cer || ((inBoat || ride) && kind === 'sit')) return false;   // afloat everything but sitting (already seated)
       if (kind === 'sit') { sitting = !sitting; emo = null; bubble.visible = false; target = null; onArrive = null; return true; }
       if (!EMOTES[kind]) return false;
       sitting = false;
