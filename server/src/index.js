@@ -204,7 +204,7 @@ export class Lake extends DurableObject {
         r.l = now;
         const k = str(d.k, 40); if (!k) return;
         if (this.banned(me.o)) return;               // a blocked writer's lantern reaches only themselves
-        const l = { o: me.o, k, tx: cleanMessage(str(d.tx, 30)), c: COLORS.has(d.c) ? d.c : 'amber', m: d.m === 'sky' ? 'sky' : 'water', at: now };
+        const l = { o: me.o, k, tx: cleanMessage(str(d.tx, 40)), c: COLORS.has(d.c) ? d.c : 'amber', m: d.m === 'sky' ? 'sky' : 'water', at: now };
         this.sql.exec('INSERT OR REPLACE INTO lanterns (o, k, t, c, m, at) VALUES (?, ?, ?, ?, ?, ?)', l.o, l.k, l.tx, l.c, l.m, l.at);
         this.broadcast({ t: 'l', id: me.id, ...l }, ws);
         return;

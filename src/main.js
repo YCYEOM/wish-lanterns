@@ -8,6 +8,8 @@ import { LITE, SOFTWARE_GPU } from './quality.js';
 import { createCat } from './cat.js';
 import { createStones, NOTES } from './stones.js';
 import { createWhale } from './whale.js';
+import { EN, L } from './i18n.js';
+const T_ = L;   // the same, for code where L names a lantern
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
 import * as shore from './shore.js';
@@ -396,14 +398,14 @@ function moonPhaseNow(ms = Date.now()) {
   return ((age + syn) % syn) / syn;
 }
 function moonName(p) {
-  if (p < 0.03 || p > 0.97) return '🌑 달 없는 밤';
-  if (p < 0.22) return '🌒 초승달';
-  if (p < 0.28) return '🌓 상현달';
-  if (p < 0.47) return '🌔 차오르는 달';
-  if (p < 0.53) return '🌕 보름달';
-  if (p < 0.72) return '🌖 기우는 달';
-  if (p < 0.78) return '🌗 하현달';
-  return '🌘 그믐달';
+  if (p < 0.03 || p > 0.97) return L('🌑 달 없는 밤', '🌑 moonless night');
+  if (p < 0.22) return L('🌒 초승달', '🌒 crescent moon');
+  if (p < 0.28) return L('🌓 상현달', '🌓 first quarter');
+  if (p < 0.47) return L('🌔 차오르는 달', '🌔 waxing moon');
+  if (p < 0.53) return L('🌕 보름달', '🌕 full moon');
+  if (p < 0.72) return L('🌖 기우는 달', '🌖 waning moon');
+  if (p < 0.78) return L('🌗 하현달', '🌗 last quarter');
+  return L('🌘 그믐달', '🌘 old moon');
 }
 uniforms.moonPhase.value = moonPhaseNow();
 const ATMOS_VIEW = { pos: [-6, 3.2, 24], target: [2, 3.5, -40] };
@@ -411,11 +413,11 @@ function forceAtmos(w, s) { forcedWeather = w; forcedSeason = s; applyAtmos(true
 function realAtmos() { if (forcedWeather || forcedSeason) forceAtmos(null, null); }
 function weatherLine() {
   const S = SEASONS[seoul.season];
-  if (!seoul.weather) return `${S.emoji} ${S.name}밤의 호수예요`;
+  if (!seoul.weather) return L(`${S.emoji} ${S.name}밤의 호수예요`, `${S.emoji} An ${S.name} night on the lake`);
   const W = WEATHER[seoul.weather];
   const t = typeof seoul.temp === 'number' ? ` · ${Math.round(seoul.temp)}°` : '';
   const moon = seoul.weather === 'clear' || seoul.weather === 'cloudy' ? ` · ${moonName(uniforms.moonPhase.value)}` : '';
-  return `${W.emoji} ${S.name}밤, ${W.line}${t}${moon}`;
+  return L(`${W.emoji} ${S.name}밤, ${W.line}${t}${moon}`, `${W.emoji} An ${S.name} night, ${W.line}${t}${moon}`);
 }
 function noticeWeather() {
   if (weatherNoticed || !seoul.tried) return;
@@ -448,7 +450,7 @@ walker.reset(START.x, START.z);
 const keys = new Set();
 // on a touch screen the tip speaks of taps and drags, not keys
 if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
-  document.getElementById('tip').textContent = '땅을 눌러 걸어요 · 화면을 끌어 둘러봐요 · 등불을 누르면 한마디가 보여요';
+  document.getElementById('tip').textContent = L('땅을 눌러 걸어요 · 화면을 끌어 둘러봐요 · 등불을 누르면 한마디가 보여요', 'Tap the ground to walk · drag to look around · tap a lantern to read it');
 }
 
 function gradientColors(geo, color, top, bottom) {
@@ -670,7 +672,7 @@ function arriveStars() {
     save.starsSeen = n; persist();
     const show = () => {
       if (screen === 'title' || !weatherNoticed || Date.now() < toastBusyUntil + 300) { setTimeout(show, 700); return; }
-      toast(fresh === 1 ? '⭐ 지난번에 띄운 등불이 별이 되었어요 · 하늘을 올려다보세요' : `⭐ 지난번에 띄운 등불 ${fresh}개가 별이 되었어요 · 하늘을 올려다보세요`, 5200);
+      toast(fresh === 1 ? L('⭐ 지난번에 띄운 등불이 별이 되었어요 · 하늘을 올려다보세요', '⭐ The lantern you launched last time became a star · look up') : L(`⭐ 지난번에 띄운 등불 ${fresh}개가 별이 되었어요 · 하늘을 올려다보세요`, `⭐ ${fresh} of your lanterns became stars · look up`), 5200);
       audio.chime([1046.5, 1318.5, 1567.98, 2093], 0.14);
       // the view lifts toward them for a few seconds, then settles back
       if (screen === 'lake') { walker.turnView(-0.3, -0.55); setTimeout(() => { if (screen === 'lake') walker.turnView(null); }, 6500); }
@@ -717,7 +719,7 @@ function otherWish(slot, h) {
   if (screen === 'title' || Math.abs(slot - starSlot) > 1) return;
   sparkFall(14, 0.7);
   audio.chime([1174.66, 1567.98], 0.14);
-  toast(othersWished(slot) > 1 ? `✨ ${othersWished(slot)}명이 같은 별똥별에 소원을 빌었어요` : '✨ 누군가 같은 별똥별에 소원을 빌었어요', 2800);
+  toast(othersWished(slot) > 1 ? L(`✨ ${othersWished(slot)}명이 같은 별똥별에 소원을 빌었어요`, `✨ ${othersWished(slot)} people wished on the same shooting star`) : L('✨ 누군가 같은 별똥별에 소원을 빌었어요', '✨ Someone wished on the same shooting star'), 2800);
 }
 function makeWish() {
   if (wishOpen <= 0) return;
@@ -729,7 +731,7 @@ function makeWish() {
   // a fall of gold sparks from where the star went out
   // from where the star went out, brought near enough to see the sparks fall
   sparkFall(30, 1);
-  toast(othersWished(wishSlot) ? `🌠 소원이 별에 닿았어요 · ${othersWished(wishSlot)}명이 같은 별에 빌었어요` : '🌠 소원이 별에 닿았어요');
+  toast(othersWished(wishSlot) ? L(`🌠 소원이 별에 닿았어요 · ${othersWished(wishSlot)}명이 같은 별에 빌었어요`, `🌠 Your wish reached the star · ${othersWished(wishSlot)} others wished on it too`) : L('🌠 소원이 별에 닿았어요', '🌠 Your wish reached the star'));
 }
 // a fall of gold sparks from where the star went out, brought near enough to see them fall
 function sparkFall(n, k) {
@@ -999,6 +1001,34 @@ resize();
 
 // ---------------------------------------------------------------- UI
 const $ = (id) => document.getElementById(id);
+// English UI (i18n.js): the page's own words are swapped once at start; everything said later goes through L()
+const MSG_MAX = EN ? 40 : 30;
+if (EN) {
+  document.documentElement.lang = 'en'; document.title = 'Wish Lanterns';
+  const set = (sel, how, v) => { const e = document.querySelector(sel); if (e) { if (how === 'text') e.textContent = v; else if (how === 'html') e.innerHTML = v; else e.setAttribute(how, v); } };
+  [
+    ['#title h1', 'text', 'Wish Lanterns'], ['#title p', 'text', 'Put today’s heart in a lantern and set it on the lake'], ['#title .hint', 'text', 'Tap to begin'],
+    ['#stats', 'title', 'Go to another lake'], ['#lakePanel h2', 'text', 'Choose a lake'], ['#lakeSub', 'text', 'Tap a lake to go there'],
+    ['#invite', 'title', 'Copy an invite link'], ['#mute', 'title', 'Sound'], ['#music', 'title', 'Music'], ['#diaryBtn', 'title', 'My lanterns'],
+    ['#boatBtn', 'text', '⛵ Take the boat'], ['#emoteBtn', 'title', 'Actions (1-5)'],
+    ['[data-emote=wave]', 'html', '👋<span>Wave</span>'], ['[data-emote=bow]', 'html', '🙇<span>Bow</span>'], ['[data-emote=jump]', 'html', '🎉<span>Hop</span>'],
+    ['[data-emote=heart]', 'html', '💕<span>Heart</span>'], ['[data-emote=sit]', 'html', '🪑<span>Sit</span>'],
+    ['[data-emote=wave]', 'title', 'Wave (1)'], ['[data-emote=bow]', 'title', 'Bow (2)'], ['[data-emote=jump]', 'title', 'Hop (3)'], ['[data-emote=heart]', 'title', 'Heart (4)'], ['[data-emote=sit]', 'title', 'Sit (5)'],
+    ['#shareBtn', 'text', '📸 Keep this moment'], ['#wishBtn', 'text', '🌠 Make a wish'],
+    ['#launchBtn', 'text', '🏮 Go to the water and launch'],
+    ['#compose h2', 'text', 'My lantern'], ['#compose .label:not(.where)', 'text', 'Colour'],
+    ['#compose .label:nth-of-type(3)', 'html', 'A few words <span class="sub">(or none at all)</span>'],
+    ['#compose .label.where', 'text', 'Where should it go?'], ['#topic', 'title', 'Start from today’s topic'],
+    ['#msg', 'placeholder', 'A few words from your heart'], ['#msg', 'maxlength', '40'], ['#count', 'text', '0/40'],
+    ['[data-mode=water]', 'text', '🌊 On the water'], ['[data-mode=sky]', 'text', '✨ To the sky'], ['#send', 'text', 'Launch'],
+    ['#hideBtn', 'text', 'Hide'], ['#reportBtn', 'text', '🚩 Report'], ['#photoBtn', 'text', '📸 Picture'],
+    ['#diary h2', 'text', 'My lanterns'], ['#seeStars', 'text', '⭐ See my constellation'],
+    ['#musicPanel h2', 'text', 'Music'], ['[data-mood=calm]', 'text', '🌙 Calm'], ['[data-mood=warm]', 'text', '🕯️ Warm'],
+    ['[data-mood=dreamy]', 'text', '🫧 Dreamy'], ['[data-mood=starry]', 'text', '✨ Starry'], ['#musicReset', 'text', 'Reset'],
+    ['#sharePanel h2', 'text', 'Keep this moment'], ['#shareImg', 'alt', 'Lantern picture card'], ['#shareGo', 'text', 'Share'], ['#shareSave', 'text', 'Save'],
+  ].forEach(([sel, how, v]) => set(sel, how, v));
+  if (!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) set('#tip', 'text', 'WASD/arrows or tap the ground to walk · drag or Q/E to look around · tap a lantern to read it');
+}
 const audio = new Audio();
 let screen = 'title';
 let selected = null;
@@ -1007,9 +1037,9 @@ let composeColor = COLORS[0].id, composeMode = 'water';
 let online = 0;
 let lakeNo = null;
 function updateStats() {
-  const people = lakeNo ? `🌙 호수 ${lakeNo}${online > 1 ? ` · 지금 ${online}명` : ''} · ` : (online > 1 ? `🌙 지금 호수에 ${online}명 · ` : '');
-  const got = (save.received ? ` · 받은 반짝임 ${save.received}` : '') + (save.wishes ? ` · 별똥별 소원 ${save.wishes}` : '');
-  $('stats').textContent = `${people}띄운 등불 ${save.launched} · 보낸 반짝임 ${save.hearts}${got}`;
+  const people = lakeNo ? L(`🌙 호수 ${lakeNo}${online > 1 ? ` · 지금 ${online}명` : ''} · `, `🌙 Lake ${lakeNo}${online > 1 ? ` · ${online} here` : ''} · `) : (online > 1 ? L(`🌙 지금 호수에 ${online}명 · `, `🌙 ${online} on the lake · `) : '');
+  const got = (save.received ? L(` · 받은 반짝임 ${save.received}`, ` · hearts received ${save.received}`) : '') + (save.wishes ? L(` · 별똥별 소원 ${save.wishes}`, ` · wishes ${save.wishes}`) : '');
+  $('stats').textContent = L(`${people}띄운 등불 ${save.launched} · 보낸 반짝임 ${save.hearts}${got}`, `${people}lanterns ${save.launched} · hearts sent ${save.hearts}${got}`);
   if (lakeNo) $('stats').insertAdjacentHTML('beforeend', ' <span class="lake-caret">▾</span>');
 }
 
@@ -1057,7 +1087,7 @@ const netHooks = {
     if (fresh) lanterns[lanterns.length - 1].grow = 0;   // starts small, like one just let go of
     if (fresh && screen !== 'title' && T - lastArrivalToast > 4) {
       lastArrivalToast = T;
-      toast(text ? `누군가 「${text}」 등불을 띄웠어요` : '누군가 조용히 등불을 띄웠어요');
+      toast(text ? L(`누군가 「${text}」 등불을 띄웠어요`, `Someone launched “${text}”`) : L('누군가 조용히 등불을 띄웠어요', 'Someone quietly launched a lantern'));
       audio.chime([659.25, 880], 0.12);
     }
   },
@@ -1069,7 +1099,7 @@ const netHooks = {
     if (L) { burst(L); L.hearts++; if (selected === L) refreshHeart(); }
     if (L && L.mine) {
       save.received++; save.heartsBy[L.id] = (save.heartsBy[L.id] | 0) + 1; persist(); updateStats();
-      toast(L.text ? `누군가 「${L.text}」 등불에 ♡를 보냈어요` : '누군가 내 등불에 ♡를 보냈어요');
+      toast(L.text ? T_(`누군가 「${L.text}」 등불에 ♡를 보냈어요`, `Someone sent ♡ to “${L.text}”`) : T_('누군가 내 등불에 ♡를 보냈어요', 'Someone sent ♡ to your lantern'));
       audio.chime([783.99, 987.77, 1174.66]);
     }
   },
@@ -1081,7 +1111,7 @@ const netHooks = {
     others.clear();
     joinBoard(n);                      // the lanterns left on this lake today, and new ones live through the relays
   },
-  onJoin() { if (screen !== 'title') toast('누군가 호숫가에 왔어요', 2400); },
+  onJoin() { if (screen !== 'title') toast(L('누군가 호숫가에 왔어요', 'Someone came to the shore'), 2400); },
   // the other people on this lake walk the shore as characters of their own (scarf colour by person)
   onPos(id, d) {
     let r = others.get(id);
@@ -1136,7 +1166,7 @@ function awayHeart(netId, h) {
     // after the weather line and any other line on screen, so it is read on its own
     const show = () => {
       if (screen === 'title' || !weatherNoticed || Date.now() < toastBusyUntil + 300) { setTimeout(show, 600); return; }
-      toast(`🌙 자리를 비운 사이, 내 등불에 ♡ ${awayCount}개가 도착했어요`, 5200);
+      toast(T_(`🌙 자리를 비운 사이, 내 등불에 ♡ ${awayCount}개가 도착했어요`, `🌙 While you were away, ${awayCount} ♡ reached your lanterns`), 5200);
       audio.chime([659.25, 783.99, 987.77, 1318.5], 0.12); awayCount = 0;
     };
     show();
@@ -1176,9 +1206,9 @@ function startGame() {
   updateStats();
   net.start();
   arriveStars();
-  if (SOFTWARE_GPU) setTimeout(() => toast('⚠️ 그래픽 가속이 꺼져 있어 가벼운 화면으로 보여 드려요 · 크롬 설정 → 시스템 → "가능한 경우 그래픽 가속 사용"을 켜면 훨씬 예뻐요', 9000), 2500);
+  if (SOFTWARE_GPU) setTimeout(() => toast(L('⚠️ 그래픽 가속이 꺼져 있어 가벼운 화면으로 보여 드려요 · 크롬 설정 → 시스템 → "가능한 경우 그래픽 가속 사용"을 켜면 훨씬 예뻐요', '⚠️ Graphics acceleration is off, so this is a lighter view · turn on "Use graphics acceleration when available" in your browser settings for the full scene'), 9000), 2500);
   const inv = invitedLake();
-  if (inv) setTimeout(() => toast(`초대받은 호수 ${inv}에 들어왔어요`, 3500), 1400);
+  if (inv) setTimeout(() => toast(L(`초대받은 호수 ${inv}에 들어왔어요`, `You joined lake ${inv} from an invite`), 3500), 1400);
   noticeWeather();
 }
 $('title').addEventListener('pointerdown', startGame);
@@ -1195,7 +1225,7 @@ PRESETS.forEach(p => {
   b.onclick = () => { $('msg').value = p; onMsgInput(); audio.tick(); };
   $('presets').appendChild(b);
 });
-function onMsgInput() { $('count').textContent = `${[...$('msg').value].length}/30`; }
+function onMsgInput() { $('count').textContent = `${[...$('msg').value].length}/${MSG_MAX}`; }
 $('msg').addEventListener('input', onMsgInput);
 $('msg').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) sendLantern(); e.stopPropagation(); });
 document.querySelectorAll('.mode').forEach(b => b.onclick = () => {
@@ -1205,7 +1235,7 @@ document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => closePa
 
 function openCompose() {
   closeCard(); closePanel('music');
-  $('topic').textContent = `💭 오늘의 주제 · ${topicToday()}`;
+  $('topic').textContent = L(`💭 오늘의 주제 · ${topicToday()}`, `💭 Today’s topic · ${topicToday()}`);
   $('toast').classList.add('hidden');   // the weather / arrival line never sits over the panel
   $('compose').classList.remove('hidden');
   $('launchBtn').classList.add('hidden'); $('tip').classList.add('hidden');
@@ -1226,14 +1256,14 @@ $('launchBtn').onclick = () => {
   const e = shore.nearestShore(walker.pos.x, walker.pos.z, 1.2);
   walker.walkTo(e.x, e.z, () => { if (screen === 'lake') openCompose(); });
   showTapMark(e.x, e.z);
-  toast('물가로 걸어가는 중…', 1800);
+  toast(L('물가로 걸어가는 중…', 'Walking to the water…'), 1800);
 };
 let nearWaterShown = null;
 function updateLaunchLabel() {
   const near = walker.state().nearWater;
   if (near === nearWaterShown) return;
   nearWaterShown = near;
-  $('launchBtn').textContent = near ? '🏮 여기서 등불 띄우기' : '🏮 물가로 가서 등불 띄우기';
+  $('launchBtn').textContent = near ? L('🏮 여기서 등불 띄우기', '🏮 Launch a lantern here') : L('🏮 물가로 가서 등불 띄우기', '🏮 Go to the water and launch');
 }
 setInterval(updateLaunchLabel, 200);
 $('send').onclick = () => sendLantern();
@@ -1271,7 +1301,7 @@ function sendLantern() {
   $('launchBtn').classList.add('hidden'); $('tip').classList.add('hidden'); closeCard();
   $('msg').value = ''; onMsgInput();
   setTimeout(() => audio.plop(), timing.release * 1000);
-  toast(text ? `「${text}」 등불이 천천히 떠나가요` : '등불이 조용히 떠나가요');
+  toast(text ? T_(`「${text}」 등불이 천천히 떠나가요`, `“${text}” drifts slowly away`) : T_('등불이 조용히 떠나가요', 'Your lantern drifts quietly away'));
   return L;
 }
 
@@ -1279,17 +1309,17 @@ function sendLantern() {
 function openCard(L) {
   if (selected) selected.selected = 0;
   selected = L; L.selected = 1;
-  $('cardWho').textContent = L.mine ? '내가 띄운 등불' : L.who ? `${L.who}님의 등불` : '누군가의 등불';
-  if (L.hearts + (L.liked ? 1 : 0) >= 5) $('cardWho').textContent += ' · ✨ 많은 마음이 닿은 등불';
+  $('cardWho').textContent = L.mine ? T_('내가 띄운 등불', 'Your lantern') : L.who ? T_(`${L.who}님의 등불`, `${L.who}’s lantern`) : T_('누군가의 등불', 'Someone’s lantern');
+  if (L.hearts + (L.liked ? 1 : 0) >= 5) $('cardWho').textContent += T_(' · ✨ 많은 마음이 닿은 등불', ' · ✨ loved by many');
   const m = $('cardMsg');
   if (L.text) { m.textContent = L.text; m.style.fontStyle = 'normal'; m.style.opacity = 1; }
-  else { m.textContent = '말없이 띄운 등불이에요\n그 마음도 닿기를'; m.style.whiteSpace = 'pre-line'; m.style.opacity = 0.75; }
+  else { m.textContent = T_('말없이 띄운 등불이에요\n그 마음도 닿기를', 'A lantern sent without words\nmay its heart reach you'); m.style.whiteSpace = 'pre-line'; m.style.opacity = 0.75; }
   refreshHeart();
   $('hideBtn').classList.toggle('hidden', L.mine);
   // only other people's lanterns can be reported (the built-in warm ones can just be hidden)
   $('reportBtn').classList.toggle('hidden', L.mine || !L.id.includes(':'));
   $('photoBtn').classList.toggle('hidden', !L.mine);
-  reportArm = 0; $('reportBtn').textContent = '🚩 신고';
+  reportArm = 0; $('reportBtn').textContent = T_('🚩 신고', '🚩 Report');
   $('card').classList.remove('hidden');
   $('tip').style.opacity = 0;
   screen = 'card';
@@ -1325,7 +1355,7 @@ $('hideBtn').onclick = () => {
   if (!selected || selected.mine) return;
   save.hidden.push(selected.id); persist();
   const L = selected; closeCard(); removeLantern(L);
-  toast('이 등불은 내 화면에서 숨겼어요', 2200);
+  toast(T_('이 등불은 내 화면에서 숨겼어요', 'Hidden from your screen'), 2200);
 };
 // ---- the photo card: the moment as a 9:16 picture with the line, the date and the address, to share or keep
 const SITE = 'wish-lanterns.ycyeom.workers.dev';
@@ -1359,12 +1389,12 @@ function makeCard(m) {
   const F = '"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif';
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.shadowColor = 'rgba(255,160,80,.75)'; g.shadowBlur = 28;
-  g.fillStyle = '#ffe6c4'; g.font = `700 54px ${F}`; g.fillText('🏮 소원 등불', W / 2, 150);
-  g.shadowBlur = 0; g.fillStyle = 'rgba(255,240,220,.75)'; g.font = `400 30px ${F}`; g.fillText('오늘의 마음을 등불에 담아', W / 2, 222);
+  g.fillStyle = '#ffe6c4'; g.font = `700 54px ${F}`; g.fillText(L('🏮 소원 등불', '🏮 Wish Lanterns'), W / 2, 150);
+  g.shadowBlur = 0; g.fillStyle = 'rgba(255,240,220,.75)'; g.font = `400 30px ${F}`; g.fillText(L('오늘의 마음을 등불에 담아', 'Today’s heart, in a lantern'), W / 2, 222);
   const d = new Date((m.at || Date.now()) + 9 * 3600 * 1000);
-  const when = `${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 밤${m.lake ? ` · 호수 ${m.lake}` : ''}`;
+  const when = EN ? `${d.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long', day: 'numeric', year: 'numeric' })}, at night${m.lake ? ` · lake ${m.lake}` : ''}` : `${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 밤${m.lake ? ` · 호수 ${m.lake}` : ''}`;
   g.font = `700 64px ${F}`;
-  const lines = m.text ? wrapLines(g, `「${m.text}」`, W - 160) : ['말없이 띄운 등불'];
+  const lines = m.text ? wrapLines(g, EN ? `“${m.text}”` : `「${m.text}」`, W - 160) : [L('말없이 띄운 등불', 'A lantern without words')];
   let y = H - 330 - (lines.length - 1) * 44;
   g.shadowColor = 'rgba(255,170,90,.8)'; g.shadowBlur = 30; g.fillStyle = '#fff3df';
   if (!m.text) g.font = `600 52px ${F}`;
@@ -1388,33 +1418,33 @@ $('photoBtn').onclick = () => { if (selected && selected.mine) { const L = selec
 $('shareSave').onclick = () => {
   const f = shareFile(); if (!f) return;
   const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast('사진을 저장했어요', 2200);
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast(L('사진을 저장했어요', 'Picture saved'), 2200);
 };
 $('shareGo').onclick = async () => {
   const f = shareFile(); if (!f) return;
-  const data = { files: [f], title: '소원 등불', text: `오늘의 마음을 등불에 담아 띄웠어요 🏮 https://${SITE}` };
+  const data = { files: [f], title: L('소원 등불', 'Wish Lanterns'), text: L(`오늘의 마음을 등불에 담아 띄웠어요 🏮 https://${SITE}`, `I sent today’s heart off in a lantern 🏮 https://${SITE}`) };
   try {
     if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share(data); return; }
   } catch (e) { if (e && e.name === 'AbortError') return; }
   $('shareSave').click();                                  // no share sheet here (desktop): save it instead
-  try { await navigator.clipboard.writeText(`https://${SITE}`); toast('사진을 저장하고 주소를 복사했어요', 2600); } catch {}
+  try { await navigator.clipboard.writeText(`https://${SITE}`); toast(L('사진을 저장하고 주소를 복사했어요', 'Picture saved and the link copied'), 2600); } catch {}
 };
 // report: a second tap confirms; it hides the lantern here at once and tells the server (3 different people's
 // reports take it off the lake for everyone)
 let reportArm = 0;
 $('reportBtn').onclick = () => {
   if (!selected || selected.mine) return;
-  if (Date.now() - reportArm > 3000) { reportArm = Date.now(); $('reportBtn').textContent = '정말 신고할까요?'; audio.tick(); return; }
+  if (Date.now() - reportArm > 3000) { reportArm = Date.now(); $('reportBtn').textContent = L('정말 신고할까요?', 'Report it?'); audio.tick(); return; }
   const L = selected;
   const sent = net.report(L.id);
   save.hidden.push(L.id); persist();
   closeCard(); removeLantern(L);
-  toast(sent ? '🚩 신고했어요 · 이 등불은 이제 보이지 않아요. 여러 사람이 신고하면 호수에서 사라져요' : '🚩 이 등불은 이제 보이지 않아요', 3600);
+  toast(sent ? T_('🚩 신고했어요 · 이 등불은 이제 보이지 않아요. 여러 사람이 신고하면 호수에서 사라져요', '🚩 Reported · you won’t see it again. If several people report it, it leaves the lake') : T_('🚩 이 등불은 이제 보이지 않아요', '🚩 You won’t see this lantern again'), 3600);
 };
 $('wishBtn').addEventListener('click', (e) => { e.stopPropagation(); makeWish(); });
 $('invite').onclick = async () => {
   const url = net.inviteUrl();
-  try { await navigator.clipboard.writeText(url); toast(`호수 ${lakeNo || 1} 초대 링크를 복사했어요 · 친구에게 보내 보세요`, 3500); }
+  try { await navigator.clipboard.writeText(url); toast(L(`호수 ${lakeNo || 1} 초대 링크를 복사했어요 · 친구에게 보내 보세요`, `Invite link to lake ${lakeNo || 1} copied · send it to a friend`), 3500); }
   catch { toast(url, 8000); }
   audio.tick();
 };
@@ -1434,14 +1464,14 @@ async function openLakes() {
 function drawLakes(d) {
   const g = $('lakeGrid'); g.textContent = '';
   const cap = (d && d.cap) || 10;
-  $('lakeSub').textContent = d ? '사람이 있는 호수는 불이 켜져 있어요 · 눌러서 가 보세요' : (net instanceof ServerNet ? '사람 수를 불러오는 중…' : '가고 싶은 호수를 눌러 보세요');
+  $('lakeSub').textContent = d ? L('사람이 있는 호수는 불이 켜져 있어요 · 눌러서 가 보세요', 'Lakes with people are lit · tap one to go') : (net instanceof ServerNet ? L('사람 수를 불러오는 중…', 'Counting people…') : L('가고 싶은 호수를 눌러 보세요', 'Tap a lake to go there'));
   for (let n = 1; n <= LAKE_TOTAL; n++) {
     const c = d ? (d.lakes[n - 1] | 0) : null;
     const b = document.createElement('button'); b.className = 'lake-cell';
     if (n === lakeNo) b.classList.add('here');
     if (c) b.classList.add('lit');
     if (c !== null && c >= cap) b.classList.add('full');
-    b.innerHTML = `<b>${n}</b><span>${n === lakeNo ? '여기' : c === null ? '' : c >= cap ? `가득 ${c}` : c ? `${c}명` : '조용'}</span>`;
+    b.innerHTML = `<b>${n}</b><span>${n === lakeNo ? L('여기', 'here') : c === null ? '' : c >= cap ? L(`가득 ${c}`, `full ${c}`) : c ? L(`${c}명`, `${c}`) : L('조용', 'quiet')}</span>`;
     b.onclick = () => goLake(n);
     g.appendChild(b);
   }
@@ -1450,12 +1480,12 @@ async function goLake(n) {
   closePanel('lakes');
   if (n === lakeNo) return;
   audio.chime([523.25, 659.25], 0.1);
-  toast(`호수 ${n}(으)로 가는 중…`, 2500);
+  toast(L(`호수 ${n}(으)로 가는 중…`, `Going to lake ${n}…`), 2500);
   const ok = await net.switchLake(n);
   if (ok) {
     try { const u = new URL(location.href); u.searchParams.set('lake', String(n)); history.replaceState(null, '', u); } catch {}
-    toast(`🌙 호수 ${n}에 왔어요`, 2600);
-  } else toast('지금은 그 호수로 갈 수 없어요 · 잠시 뒤 다시 해 보세요', 3200);
+    toast(L(`🌙 호수 ${n}에 왔어요`, `🌙 Welcome to lake ${n}`), 2600);
+  } else toast(L('지금은 그 호수로 갈 수 없어요 · 잠시 뒤 다시 해 보세요', 'Can’t reach that lake now · try again in a moment'), 3200);
 }
 $('stats').onclick = (e) => { e.stopPropagation(); audio.start(); if (screen === 'lakes') closePanel('lakes'); else openLakes(); };
 // ---- the rowboat: ⛵ at the water's edge to get in, 🏝 to get out at the nearest shore
@@ -1466,18 +1496,18 @@ function updateBoatUI() {
   if (want === boatShown) return;
   boatShown = want;
   $('boatBtn').classList.toggle('hidden', !want);
-  $('boatBtn').textContent = want === 'out' ? '🏝 내리기' : '⛵ 배 타기';
+  $('boatBtn').textContent = want === 'out' ? L('🏝 내리기', '🏝 Go ashore') : L('⛵ 배 타기', '⛵ Take the boat');
   $('launchBtn').classList.toggle('hidden', walker.inBoat || walker.busy());
   $('emoteBtn').classList.toggle('hidden', walker.inBoat);
 }
 $('boatBtn').onclick = (e) => {
   e.stopPropagation(); audio.start(); closeCard();
   if (walker.inBoat) {
-    if (walker.unboard()) { audio.plop(); $('tip').textContent = tipOnShore; toast('🏝 물가로 돌아왔어요', 2200); }
+    if (walker.unboard()) { audio.plop(); $('tip').textContent = tipOnShore; toast(L('🏝 물가로 돌아왔어요', '🏝 Back on the shore'), 2200); }
   } else if (walker.board()) {
     audio.plop(); tipOnShore = $('tip').textContent;
-    $('tip').textContent = matchMedia('(pointer: coarse)').matches ? '물을 누르면 그쪽으로 노를 저어요 · 등불을 누르면 가까이서 읽어요' : 'W/S 노 젓기 · A/D 방향 · 물을 누르면 그쪽으로 · 등불을 눌러 읽어요';
-    toast('⛵ 배에 탔어요 · 등불 사이로 노를 저어 가 보세요', 3200);
+    $('tip').textContent = matchMedia('(pointer: coarse)').matches ? L('물을 누르면 그쪽으로 노를 저어요 · 등불을 누르면 가까이서 읽어요', 'Tap the water to row there · tap a lantern to read it up close') : L('W/S 노 젓기 · A/D 방향 · 물을 누르면 그쪽으로 · 등불을 눌러 읽어요', 'W/S row · A/D turn · tap the water to row there · tap a lantern to read it');
+    toast(L('⛵ 배에 탔어요 · 등불 사이로 노를 저어 가 보세요', '⛵ You’re in the boat · row out among the lanterns'), 3200);
   }
   boatShown = '?'; updateBoatUI();
 };
@@ -1486,7 +1516,7 @@ const whale = createWhale(scene, GLOW);
 function whaleArrives() {
   if (screen === 'title') return;
   audio.whaleSong();
-  toast('🐋 빛의 고래가 나타났어요!', 4200);
+  toast(L('🐋 빛의 고래가 나타났어요!', '🐋 The whale of light is here!'), 4200);
 }
 function updateWhale(dt) {
   if (whale.schedule(Date.now(), slotHash)) whaleArrives();
@@ -1506,13 +1536,13 @@ function playStone(i, remote) {
   audio.start();
   const d = Math.hypot(s.x - walker.pos.x, s.z - walker.pos.z);
   audio.stone(NOTES[i], remote ? Math.max(0, 1 - d / 45) : 1);
-  if (!remote) { net.sendNote && net.sendNote(i); if (!save.stonesPlayed) { save.stonesPlayed = true; persist(); toast('🎐 노래하는 돌이에요 · 같은 호수 사람들에게도 들려요', 3200); } }
+  if (!remote) { net.sendNote && net.sendNote(i); if (!save.stonesPlayed) { save.stonesPlayed = true; persist(); toast(L('🎐 노래하는 돌이에요 · 같은 호수 사람들에게도 들려요', '🎐 Singing stones · everyone on the lake hears them'), 3200); } }
 }
 let stoneHintDone = false;
 function stoneHint() {   // the first time you come near them
   if (stoneHintDone || save.stonesPlayed || screen !== 'lake') return;
   const s = stones.stones[3];
-  if (Math.hypot(s.x - walker.pos.x, s.z - walker.pos.z) < 6 && Date.now() > toastBusyUntil + 300) { stoneHintDone = true; toast('🎐 물가의 빛나는 돌을 눌러 보세요', 3000); }
+  if (Math.hypot(s.x - walker.pos.x, s.z - walker.pos.z) < 6 && Date.now() > toastBusyUntil + 300) { stoneHintDone = true; toast(L('🎐 물가의 빛나는 돌을 눌러 보세요', '🎐 Try tapping the glowing stones by the water'), 3000); }
 }
 // ---- the lakeside cat: keeps you company; bond grows with minutes spent near it (saved)
 const cat = createCat(scene, shore, { bond: save.catBond });
@@ -1527,7 +1557,7 @@ function updateCat(dt) {
   // curled up beside you while you sit: it purrs now and then (more often as it grows fond of you)
   if (walker.sitting && cat.curled && (purrT -= dt) < 0) { purrT = Math.max(5, 14 - save.catBond); audio.purr(3, Math.min(1, 0.5 + save.catBond / 20)); }
   if (!save.catMet && T > 6 && screen === 'lake' && weatherNoticed && Date.now() > toastBusyUntil + 300) {
-    save.catMet = true; persist(); toast('🐈 호숫가 고양이가 따라오기 시작했어요 · 눌러 보세요', 3800);
+    save.catMet = true; persist(); toast(L('🐈 호숫가 고양이가 따라오기 시작했어요 · 눌러 보세요', '🐈 A lakeside cat started following you · give it a tap'), 3800);
   }
 }
 function petCat() {
@@ -1548,12 +1578,12 @@ $('emoteBtn').onclick = (e) => { e.stopPropagation(); audio.start(); $('emoteBar
 document.querySelectorAll('#emoteBar [data-emote]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); doEmote(b.dataset.emote); });
 // background music, remembered between visits: 🎵 opens a small panel with an on/off switch, a mood and sliders
 const SLIDERS = [
-  { id: 'vol', label: '음악 크기', min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
-  { id: 'tempo', label: '빠르기', min: 0, max: 1, step: 0.01, show: (v) => (v < 0.34 ? '느리게' : v < 0.67 ? '보통' : '빠르게') },
-  { id: 'notes', label: '오르골 음', min: 0, max: 1, step: 0.01, show: (v) => (v < 0.08 ? '없음' : v < 0.34 ? '드문드문' : v < 0.67 ? '보통' : '많이') },
-  { id: 'key', label: '음 높이', min: -5, max: 7, step: 1, show: (v) => (v > 0 ? `+${v}` : `${v}`) },
-  { id: 'rev', label: '울림', min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
-  { id: 'nature', label: '물·풀벌레 소리', min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
+  { id: 'vol', label: L('음악 크기', 'Volume'), min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
+  { id: 'tempo', label: L('빠르기', 'Tempo'), min: 0, max: 1, step: 0.01, show: (v) => (v < 0.34 ? L('느리게', 'slow') : v < 0.67 ? L('보통', 'medium') : L('빠르게', 'lively')) },
+  { id: 'notes', label: L('오르골 음', 'Melody'), min: 0, max: 1, step: 0.01, show: (v) => (v < 0.08 ? L('없음', 'none') : v < 0.34 ? L('드문드문', 'sparse') : v < 0.67 ? L('보통', 'some') : L('많이', 'lots')) },
+  { id: 'key', label: L('음 높이', 'Pitch'), min: -5, max: 7, step: 1, show: (v) => (v > 0 ? `+${v}` : `${v}`) },
+  { id: 'rev', label: L('울림', 'Echo'), min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
+  { id: 'nature', label: L('물·풀벌레 소리', 'Water & crickets'), min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
 ];
 for (const sd of SLIDERS) {
   const row = document.createElement('label'); row.className = 'mp-row';
@@ -1562,7 +1592,7 @@ for (const sd of SLIDERS) {
 }
 function syncMusic() {
   const c = save.musicCfg;
-  $('music').classList.toggle('off', !save.music); $('music').title = '배경음악 설정';
+  $('music').classList.toggle('off', !save.music); $('music').title = L('배경음악 설정', 'Music settings');
   $('musicOn').classList.toggle('on', save.music); $('musicOn').setAttribute('aria-checked', String(save.music));
   $('musicPanel').classList.toggle('muted', !save.music);
   document.querySelectorAll('.mood').forEach((b) => b.classList.toggle('on', b.dataset.mood === c.mood));
@@ -1597,21 +1627,21 @@ document.querySelectorAll('#sliders input').forEach((inp) => inp.addEventListene
 }));
 $('musicReset').onclick = () => { setMusicCfg({ ...MUSIC_DEFAULTS }); audio.tick(); };
 // the lantern diary: what you launched, the hearts each got, and your totals
-function dateKST(ms) { const d = new Date(ms + 9 * 3600 * 1000); return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`; }
+function dateKST(ms) { const d = new Date(ms + 9 * 3600 * 1000); return EN ? d.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' }) : `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`; }
 function openDiary() {
   closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'music') closePanel('music');
   const c = COLORS;
-  $('diarySum').innerHTML = `<span>⭐ 나의 별 <b>${myRipe().length}</b></span><span>띄운 등불 <b>${save.launched}</b></span><span>받은 반짝임 <b>${save.received}</b></span><span>보낸 반짝임 <b>${save.hearts}</b></span><span>별똥별 소원 <b>${save.wishes}</b></span>`;
+  $('diarySum').innerHTML = L(`<span>⭐ 나의 별 <b>${myRipe().length}</b></span><span>띄운 등불 <b>${save.launched}</b></span><span>받은 반짝임 <b>${save.received}</b></span><span>보낸 반짝임 <b>${save.hearts}</b></span><span>별똥별 소원 <b>${save.wishes}</b></span>`, `<span>⭐ my stars <b>${myRipe().length}</b></span><span>lanterns <b>${save.launched}</b></span><span>hearts received <b>${save.received}</b></span><span>hearts sent <b>${save.hearts}</b></span><span>wishes <b>${save.wishes}</b></span>`);
   const list = $('diaryList'); list.textContent = '';
   const items = save.log.length ? [...save.log].reverse() : [];
-  if (!items.length) { const e = document.createElement('div'); e.className = 'diary-empty'; e.textContent = '아직 띄운 등불이 없어요. 물가로 가서 첫 등불을 띄워 보세요.'; list.appendChild(e); }
+  if (!items.length) { const e = document.createElement('div'); e.className = 'diary-empty'; e.textContent = L('아직 띄운 등불이 없어요. 물가로 가서 첫 등불을 띄워 보세요.', 'No lanterns yet. Go to the water and launch your first one.'); list.appendChild(e); }
   for (const it of items) {
     const row = document.createElement('div'); row.className = 'diary-item';
     const dot = document.createElement('span'); dot.className = 'diary-dot'; dot.style.setProperty('--c', (c.find(x => x.id === it.color) || c[0]).css);
     const body = document.createElement('div'); body.className = 'diary-text';
-    body.textContent = it.text ? `「${it.text}」` : '말없이 띄운 등불';
+    body.textContent = it.text ? (EN ? `“${it.text}”` : `「${it.text}」`) : L('말없이 띄운 등불', 'A lantern without words');
     const meta = document.createElement('div'); meta.className = 'diary-meta';
-    meta.textContent = `${it.at ? dateKST(it.at) + ' 밤' : ''}${it.lake ? ` · 호수 ${it.lake}` : ''} · ${it.mode === 'sky' ? '하늘로' : '물 위로'} · ${ripe(it) ? '⭐ 별이 되었어요' : '내일 별이 돼요'}`;
+    meta.textContent = `${it.at ? dateKST(it.at) + L(' 밤', ' night') : ''}${it.lake ? L(` · 호수 ${it.lake}`, ` · lake ${it.lake}`) : ''} · ${it.mode === 'sky' ? L('하늘로', 'to the sky') : L('물 위로', 'on the water')} · ${ripe(it) ? L('⭐ 별이 되었어요', '⭐ now a star') : L('내일 별이 돼요', 'a star tomorrow')}`;
     body.appendChild(meta);
     const hb = document.createElement('span'); hb.className = 'diary-heart'; const n = save.heartsBy[it.id] | 0; hb.textContent = n ? `♡ ${n}` : '';
     row.append(dot, body, hb); list.appendChild(row);
@@ -1625,11 +1655,11 @@ $('seeStars').onclick = () => {
   closePanel('diary');
   if (!myStarCount) {
     const any = starEntries().length;
-    toast(any ? '⭐ 아직 별이 된 등불이 없어요 · 띄운 등불은 다음 날 하늘의 별이 돼요' : '⭐ 등불을 띄우면 다음 날 하늘에 나의 별이 생겨요', 4200);
+    toast(any ? L('⭐ 아직 별이 된 등불이 없어요 · 띄운 등불은 다음 날 하늘의 별이 돼요', '⭐ No stars yet · your lanterns become stars the next day') : L('⭐ 등불을 띄우면 다음 날 하늘에 나의 별이 생겨요', '⭐ Launch a lantern and it becomes your star the next day'), 4200);
     return;
   }
   walker.turnView(null); walker.turnView(-0.3, -0.55);
-  toast(`⭐ 나의 별 ${myStarCount}개 · 금빛 선으로 이어진 별자리예요 (R: 원래 시점)`, 4200);
+  toast(L(`⭐ 나의 별 ${myStarCount}개 · 금빛 선으로 이어진 별자리예요 (R: 원래 시점)`, `⭐ ${myStarCount} stars of yours · joined by golden lines (R: back to the view)`), 4200);
   audio.chime([1046.5, 1318.5, 1567.98], 0.12);
 };
 $('diaryBtn').onclick = () => { audio.start(); if (screen === 'diary') closePanel('diary'); else openDiary(); };

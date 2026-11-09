@@ -1,15 +1,16 @@
 // Static content: lantern colours, preset phrases, warm messages for virtual lanterns, word filter.
+import { EN, L } from './i18n.js';
 
 // css: the UI swatch, matched to how the lit lantern reads on screen; hex: glow tint; lamp: the deeper paper colour the 3D lantern is lit with (pastels wash out to white once lit)
 export const COLORS = [
-  { id: 'amber', name: '주황', hex: 0xffa24a, css: '#ffa24a' },
-  { id: 'rose', name: '분홍', hex: 0xff8fb0, lamp: 0xff6a98, css: '#f0809c' },
-  { id: 'sky', name: '하늘', hex: 0x8fd0ff, lamp: 0x3f9cff, css: '#5fa6ee' },
-  { id: 'mint', name: '연두', hex: 0xb4f08a, lamp: 0x72d84a, css: '#92d65c' },
-  { id: 'lilac', name: '보라', hex: 0xc6a2ff, lamp: 0x9a5cff, css: '#a66cf2' },
+  { id: 'amber', name: L('주황', 'Amber'), hex: 0xffa24a, css: '#ffa24a' },
+  { id: 'rose', name: L('분홍', 'Rose'), hex: 0xff8fb0, lamp: 0xff6a98, css: '#f0809c' },
+  { id: 'sky', name: L('하늘', 'Sky'), hex: 0x8fd0ff, lamp: 0x3f9cff, css: '#5fa6ee' },
+  { id: 'mint', name: L('연두', 'Leaf'), hex: 0xb4f08a, lamp: 0x72d84a, css: '#92d65c' },
+  { id: 'lilac', name: L('보라', 'Lilac'), hex: 0xc6a2ff, lamp: 0x9a5cff, css: '#a66cf2' },
 ];
 
-export const PRESETS = [
+export const PRESETS = EN ? ['You did well today', "It'll all be okay", 'I miss you', 'Thank you', 'Stay well', 'I need a good sleep'] : [
   '오늘도 수고했어',
   '다 잘 될 거야',
   '보고 싶어',
@@ -18,7 +19,16 @@ export const PRESETS = [
   '푹 자고 싶다',
 ];
 
-export const WARM_MESSAGES = [
+const WARM_EN = [
+  'Made it through another day', 'Hope tomorrow feels lighter', 'Mom, Dad, stay healthy', 'Wish me luck on my exam',
+  "It's okay to go slowly", 'Warm nights to everyone', 'I miss my dog', 'This year I will travel',
+  'May the one I love be happy', 'I wanted to say thank you', "It's okay to rest", 'Something made me smile today',
+  "Let's all stay well", 'Cheer on my new start', 'See you again someday', 'You are enough as you are',
+  'Got my first paycheck!', 'The stars are lovely tonight', 'Hope the new home feels like home soon', 'Grandma, I love you',
+  'Getting better, little by little', '', '', "I'm glad we're together", 'May my heart reach you',
+  'Well done, me', 'Hurry up, spring', 'Happy birthday, my friend',
+];
+export const WARM_MESSAGES = EN ? WARM_EN : [
   '오늘 하루도 잘 버텼어요',
   '내일은 조금 더 가벼운 하루이길',
   '엄마 아빠 오래오래 건강하세요',
@@ -53,7 +63,15 @@ export const WARM_MESSAGES = [
 // letters are skipped and look-alike characters folded (1->i, 0->o, $->s, @->a ...), so "시 1 발", "f.u.c.k"
 // and "ㅅ_ㅂ" are caught too; the whole span in the original text becomes ♡
 // today's topic for the one line (the same for everyone on a given Seoul date)
-export const TOPICS = [
+const TOPICS_EN = [
+  'To someone I was grateful for today', 'What makes me smile lately', 'To tomorrow’s me', 'Someone I miss', 'What I want this year',
+  'One thing I did well today', 'Words I want to hear now', 'To my younger self', 'The smell of my favourite season', 'How was the sky today',
+  'To someone I owe an apology', 'What keeps me going', 'The best thing I ate lately', 'A place I want to go', 'Today’s small happiness',
+  'A friend I want to cheer on', 'What I want to tell myself', 'To my family', 'A moment I never want to forget', 'Something exciting lately',
+  'Wanting a rest', 'Something that needs courage', 'To a cat or a dog', 'What I’ll do at the first snow', 'A song I heard today',
+  'Something that’s fine to do slowly', 'Someone I want to meet again', 'A small habit of mine', 'How tonight feels', 'A promise for tomorrow morning',
+];
+export const TOPICS = EN ? TOPICS_EN : [
   '오늘 고마웠던 사람에게', '요즘 나를 웃게 한 것', '내일의 나에게', '보고 싶은 사람', '올해 꼭 이루고 싶은 것',
   '오늘 잘한 일 하나', '지금 듣고 싶은 말', '어릴 적 나에게', '좋아하는 계절의 냄새', '오늘 하늘은 어땠나요',
   '미안했던 사람에게', '나를 버티게 하는 것', '요즘 가장 맛있었던 것', '가고 싶은 곳', '오늘의 작은 행복',
@@ -76,7 +94,7 @@ const FOLD = { '1': 'i', '!': 'i', '|': 'i', '0': 'o', '3': 'e', '4': 'a', '@': 
 const SKIP = /[\s.,_\-~*+=/\\'"`^:;()\[\]{}<>?#%&2069\u200b-\u200f\u3164\p{Extended_Pictographic}]/u;
 
 export function cleanMessage(raw) {
-  let s = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 30);
+  let s = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 40);
   const chars = [...s];
   const hide = new Array(chars.length).fill(false);
   // two skeletons: one that folds digits/symbols into look-alike letters (for latin words), one that skips

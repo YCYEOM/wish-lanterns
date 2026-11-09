@@ -7,16 +7,17 @@
 //     .update(dt)                 call once per frame (after uniforms.camPos is current)
 //     .state()                    { weather, season, rain, snow, petals, leaves } for probes
 import * as THREE from '../vendor/three.module.js';
+import { L } from './i18n.js';
 import { SEASONS } from './season.js';
 
 export const WEATHER_KINDS = ['clear', 'cloudy', 'rain', 'snow', 'fog'];
 
 export const WEATHER = {
-  clear: { line: '오늘 서울은 맑아요', emoji: '✨', cloudK: 0.0, rainK: 0, fogK: 0.0, rain: 0, snow: 0 },
-  cloudy: { line: '오늘 서울은 구름이 끼었어요', emoji: '☁️', cloudK: 1.0, rainK: 0, fogK: 0.12, rain: 0, snow: 0 },
-  rain: { line: '오늘 서울은 비가 와요', emoji: '🌧', cloudK: 1.0, rainK: 1, fogK: 0.3, rain: 1, snow: 0 },
-  snow: { line: '오늘 서울은 눈이 와요', emoji: '❄️', cloudK: 0.9, rainK: 0, fogK: 0.25, rain: 0, snow: 1 },
-  fog: { line: '오늘 서울은 안개가 끼었어요', emoji: '🌫', cloudK: 0.7, rainK: 0, fogK: 1, rain: 0, snow: 0 },
+  clear: { line: L('오늘 서울은 맑아요', 'clear skies in Seoul today'), emoji: '✨', cloudK: 0.0, rainK: 0, fogK: 0.0, rain: 0, snow: 0 },
+  cloudy: { line: L('오늘 서울은 구름이 끼었어요', 'cloudy in Seoul today'), emoji: '☁️', cloudK: 1.0, rainK: 0, fogK: 0.12, rain: 0, snow: 0 },
+  rain: { line: L('오늘 서울은 비가 와요', 'rain in Seoul today'), emoji: '🌧', cloudK: 1.0, rainK: 1, fogK: 0.3, rain: 1, snow: 0 },
+  snow: { line: L('오늘 서울은 눈이 와요', 'snow in Seoul today'), emoji: '❄️', cloudK: 0.9, rainK: 0, fogK: 0.25, rain: 0, snow: 1 },
+  fog: { line: L('오늘 서울은 안개가 끼었어요', 'foggy in Seoul today'), emoji: '🌫', cloudK: 0.7, rainK: 0, fogK: 1, rain: 0, snow: 0 },
 };
 
 // WMO weather codes (Open-Meteo): 0-1 clear, 2-3 cloud, 45/48 fog, 51-67 & 80-82 & 95-99 rain, 71-77 & 85-86 snow

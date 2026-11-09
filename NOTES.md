@@ -270,3 +270,11 @@ https://ycyeom.github.io/wish-lanterns/
   A/D turn, tap water to row there, lanterns tappable; camera follows the heading; lantern hangs at the bow;
   🏝 back to the nearest walkable shore. Launch / emotes hidden afloat. Positions carry `b` (server keeps it).
   Tests: `.studio/cat.mjs`, `stones.mjs`, `whale.mjs`, `boat.mjs` (local server for the shared ones).
+
+## English
+- `src/i18n.js`: LANG = 'ko' when the browser's first language is Korean, 'en' otherwise; `?lang=ko|en` forces it.
+  Strings are inline pairs `L('한국어', 'English')` (`T_` in code where `L` is a lantern variable). The static HTML
+  is swapped once at start (block after `const $` in main.js). data.js has English presets, warm messages and
+  topics; season and weather names too. Lines may be up to 40 characters (English); Korean input keeps 30.
+  The server (data.js imported in the Worker) stays Korean. Admin page stays Korean. `.studio/i18n.mjs` checks
+  no Hangul is visible in English (title, lake, compose, card, diary, music, actions).

@@ -159,7 +159,7 @@ export class Net {
       const netId = `${key}:${e.k}`;
       if (this.seen.has(netId)) continue;
       this.seen.add(netId);
-      this.hooks.onLantern({ netId, text: typeof e.t === 'string' ? e.t.slice(0, 30) : '', color: e.c, mode: e.m === 'sky' ? 'sky' : 'water' }, '', !firstSight, peerId);
+      this.hooks.onLantern({ netId, text: typeof e.t === 'string' ? e.t.slice(0, 40) : '', color: e.c, mode: e.m === 'sky' ? 'sky' : 'water' }, '', !firstSight, peerId);
     }
   }
 
