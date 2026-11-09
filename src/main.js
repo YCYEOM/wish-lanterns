@@ -5,6 +5,7 @@ import { Net, invitedLake } from './net.js';
 import { ServerNet } from './servernet.js';
 import { serverUrl } from './config.js';
 import { LITE, SOFTWARE_GPU } from './quality.js';
+import { createCat } from './cat.js';
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
 import * as shore from './shore.js';
@@ -30,7 +31,7 @@ function loadSave() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
     return { launched: s.launched | 0, hearts: s.hearts | 0, received: s.received | 0, wishes: s.wishes | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [],
-      log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false, starsSeen: s.starsSeen | 0,
+      log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false, starsSeen: s.starsSeen | 0, catBond: +s.catBond || 0, catMet: !!s.catMet,
       musicCfg: { ...MUSIC_DEFAULTS, ...(s.musicCfg && typeof s.musicCfg === 'object' ? s.musicCfg : {}) } };
   } catch { return { launched: 0, hearts: 0, received: 0, wishes: 0, hidden: [], hearted: [], mine: [], log: [], heartsBy: {}, lastVisit: 0, music: true, musicCfg: { ...MUSIC_DEFAULTS } }; }
 }
@@ -968,6 +969,7 @@ function update(dt) {
   updateSparks(dt);
   updateStar(dt);
   for (const r of others.values()) r.w.update(dt, NO_KEYS, T);
+  updateCat(dt);
   if (screen !== 'title') net.sendPos(walker.pos.x, walker.pos.z, null, myScarf, walker.sitting);
   atmos.update(dt);
   scene.fog.density = 0.0042 + uniforms.fogK.value * 0.0095;
@@ -1450,6 +1452,26 @@ async function goLake(n) {
   } else toast('지금은 그 호수로 갈 수 없어요 · 잠시 뒤 다시 해 보세요', 3200);
 }
 $('stats').onclick = (e) => { e.stopPropagation(); audio.start(); if (screen === 'lakes') closePanel('lakes'); else openLakes(); };
+// ---- the lakeside cat: keeps you company; bond grows with minutes spent near it (saved)
+const cat = createCat(scene, shore, { bond: save.catBond });
+let catSaveT = 0, purrT = 0;
+function updateCat(dt) {
+  const st = walker.state();
+  cat.update(dt, T, { pos: walker.pos, yaw: walker.yaw, moving: st.moving, sitting: walker.sitting, busy: walker.busy() });
+  if (screen === 'title') return;
+  if (Math.hypot(cat.pos.x - walker.pos.x, cat.pos.z - walker.pos.z) < 3) { save.catBond += dt / 60; cat.bond = save.catBond; }
+  if ((catSaveT += dt) > 30) { catSaveT = 0; persist(); }
+  // curled up beside you while you sit: it purrs now and then (more often as it grows fond of you)
+  if (walker.sitting && cat.curled && (purrT -= dt) < 0) { purrT = Math.max(5, 14 - save.catBond); audio.purr(3, Math.min(1, 0.5 + save.catBond / 20)); }
+  if (!save.catMet && T > 6 && screen === 'lake' && weatherNoticed && Date.now() > toastBusyUntil + 300) {
+    save.catMet = true; persist(); toast('🐈 호숫가 고양이가 따라오기 시작했어요 · 눌러 보세요', 3800);
+  }
+}
+function petCat() {
+  audio.start(); cat.pet(); audio.meow();
+  save.catBond += 0.3; cat.bond = save.catBond; persist();
+  if (walker.sitting) audio.purr(2.5, 0.8);
+}
 // little actions: 👋 wave, 🙇 bow, 🎉 jump, 💕 heart, 🪑 sit (also keys 1-5); others on the lake see them too
 const EMOTE_KEYS = ['wave', 'bow', 'jump', 'heart', 'sit'];
 function doEmote(k) {
@@ -1580,6 +1602,7 @@ function pickLantern(clientX, clientY) {
 let press = null;
 const DRAG_PX = 8;
 function tapAt(cx, cy) {
+  if (screen !== 'title' && cat.screenHit(camera, cx, cy, window.innerWidth, window.innerHeight) && !pickLantern(cx, cy)) { petCat(); return; }
   const L = pickLantern(cx, cy);
   if (L) { openCard(L); return; }
   if (screen === 'card') closeCard();
@@ -1799,6 +1822,8 @@ window.__studio.dressTris = () => { const d = scene.children.find(o => o.userDat
 window.__studio.gpu = () => { const gl = renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info'); return { renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, points: renderer.info.render.points, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs.length, lite: LITE, res: resScale, canvas: canvas.width + 'x' + canvas.height }; };
 window.__studio.ripen = () => { starsForce = true; arriveStars(); return myStarCount; };
 window.__studio.myStars = () => myStarCount;
+window.__studio.cat = () => ({ x: +cat.pos.x.toFixed(2), z: +cat.pos.z.toFixed(2), curled: cat.curled, bond: +save.catBond.toFixed(2), d: +Math.hypot(cat.pos.x - walker.pos.x, cat.pos.z - walker.pos.z).toFixed(2) });
+window.__studio.catScreen = () => { const v = new THREE.Vector3(cat.pos.x, cat.pos.y + 0.25, cat.pos.z).project(camera); return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight }; };
 window.__studio.openId = (id) => { const L = lanterns.find(l => l.id === id); if (L) openCard(L); return !!L; };
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];

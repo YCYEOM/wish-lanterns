@@ -203,6 +203,36 @@ export class Audio {
     else if (kind === 'pluck') note([[1, 1, 1.1, 'triangle'], [2, 0.3, 0.45], [3, 0.1, 0.25]]);   // a soft picked string
     else if (kind === 'bass') note([[1, 1, 2.6], [2, 0.25, 1.2]]);
   }
+  // the cat: a short meow (a sawtooth through two formant filters, pitch rising then falling)
+  meow() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, f0 = 560 + this.rnd() * 160;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f0 * 0.85, t); o.frequency.linearRampToValueAtTime(f0 * 1.25, t + 0.16); o.frequency.exponentialRampToValueAtTime(f0 * 0.7, t + 0.55);
+    const out = ctx.createGain(); out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(0.12, t + 0.05);
+    out.gain.setValueAtTime(0.12, t + 0.3); out.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    for (const [f, q, g] of [[900, 6, 1], [2600, 8, 0.5]]) {
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = q;
+      bp.frequency.setValueAtTime(f * 0.8, t); bp.frequency.linearRampToValueAtTime(f * 1.15, t + 0.2);
+      const gg = ctx.createGain(); gg.gain.value = g; o.connect(bp); bp.connect(gg); gg.connect(out);
+    }
+    out.connect(this.master); o.start(t); o.stop(t + 0.65);
+  }
+  // a purr: soft low noise pulsing about 25 times a second
+  purr(dur = 2.5, level = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, len = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+    let last = 0; for (let i = 0; i < len; i++) { last = (last + 0.06 * (this.rnd() * 2 - 1)) / 1.06; d[i] = last * 4; }
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260;
+    const am = ctx.createGain(); am.gain.value = 0.5;
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 24; const lg = ctx.createGain(); lg.gain.value = 0.5; lfo.connect(lg); lg.connect(am.gain);
+    const env = ctx.createGain(); env.gain.setValueAtTime(0.0001, t); env.gain.exponentialRampToValueAtTime(0.09 * level, t + 0.6);
+    env.gain.setValueAtTime(0.09 * level, t + dur - 0.7); env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(lp); lp.connect(am); am.connect(env); env.connect(this.nature || this.master);
+    src.start(t); lfo.start(t); src.stop(t + dur); lfo.stop(t + dur);
+  }
   setMuted(m) {
     this.muted = m;
     if (this.master) this.master.gain.setTargetAtTime(m ? 0 : 0.8, this.ctx.currentTime, 0.2);
