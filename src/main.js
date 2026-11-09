@@ -8,7 +8,7 @@ import { LITE, SOFTWARE_GPU } from './quality.js';
 import { createCat } from './cat.js';
 import { createStones, NOTES } from './stones.js';
 import { createWhale } from './whale.js';
-import { EN, L } from './i18n.js';
+import { EN, L, setLang } from './i18n.js';
 const T_ = L;   // the same, for code where L names a lantern
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
@@ -1003,6 +1003,10 @@ resize();
 const $ = (id) => document.getElementById(id);
 // English UI (i18n.js): the page's own words are swapped once at start; everything said later goes through L()
 const MSG_MAX = EN ? 40 : 30;
+// the 🌐 toggle on the title switches language (remembered)
+$('langBtn').textContent = EN ? '🌐 한국어' : '🌐 English';
+$('langBtn').addEventListener('pointerdown', (e) => e.stopPropagation());
+$('langBtn').onclick = (e) => { e.stopPropagation(); setLang(EN ? 'ko' : 'en'); };
 if (EN) {
   document.documentElement.lang = 'en'; document.title = 'Wish Lanterns';
   const set = (sel, how, v) => { const e = document.querySelector(sel); if (e) { if (how === 'text') e.textContent = v; else if (how === 'html') e.innerHTML = v; else e.setAttribute(how, v); } };
