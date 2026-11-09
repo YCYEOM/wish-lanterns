@@ -978,7 +978,7 @@ function update(dt) {
   for (const r of others.values()) r.w.update(dt, NO_KEYS, T);
   updateCat(dt);
   stones.update(dt, T);
-  if (screen !== 'title') net.sendPos(walker.pos.x, walker.pos.z, null, myScarf, walker.sitting, walker.inBoat);
+  if (screen !== 'title') net.sendPos(walker.pos.x, walker.pos.z, null, myScarf, walker.sitting, walker.inBoat, rideHostId);
   updateBoatUI();
   atmos.update(dt);
   scene.fog.density = 0.0042 + uniforms.fogK.value * 0.0095;
@@ -1126,6 +1126,18 @@ const netHooks = {
       r = { w: createWalker(scene, shore, GLOW, { remote: true, scarf: OTHER_SCARVES[d.s % OTHER_SCARVES.length] }) };
       r.w.reset(d.x, d.z); others.set(id, r);
     }
+    // a passenger: sits in their host's boat (the host may be us)
+    const wasMine = r.rd && r.rd === net.myId;
+    r.rd = d.rd || '';
+    if (r.rd) {
+      const host = r.rd === net.myId ? walker : others.get(r.rd) && others.get(r.rd).w;
+      if (host && host.inBoat) {
+        r.w.setRide(host);
+        if (r.rd === net.myId && !wasMine && screen !== 'title') toast(L('⛵ 누군가 내 배에 함께 탔어요', '⛵ Someone joined you in your boat'), 3000);
+        return;
+      }
+    }
+    if (r.w.riding) r.w.setRide(null);
     if (Math.hypot(d.x - r.w.pos.x, d.z - r.w.pos.z) > 8) r.w.reset(d.x, d.z);   // jumped (reload, another path): no long walk
     if (d.cer && !r.w.busy()) r.w.ceremony(d.cer);
     else if (!d.cer) { r.w.setBoat(!!d.b); r.w.walkTo(d.x, d.z); if (!d.b) r.w.setSitting(!!d.sit); }
@@ -1495,19 +1507,51 @@ async function goLake(n) {
 }
 $('stats').onclick = (e) => { e.stopPropagation(); audio.start(); if (screen === 'lakes') closePanel('lakes'); else openLakes(); };
 // ---- the rowboat: ⛵ at the water's edge to get in, 🏝 to get out at the nearest shore
-let boatShown = '', tipOnShore = '';
+let boatShown = '', tipOnShore = '', rideHostId = '', rideOffer = '';
+// someone else's boat close by with its bow seat free: offer to ride along
+function boatToJoin() {
+  let best = '', bd = 6;
+  for (const [id, o] of others) {
+    if (!o.w.inBoat) continue;
+    const taken = [...others.values()].some((x) => x.rd === id);
+    const d = Math.hypot(o.w.pos.x - walker.pos.x, o.w.pos.z - walker.pos.z);
+    if (!taken && d < bd) { bd = d; best = id; }
+  }
+  return best;
+}
+function leaveRide(hostLeft) {
+  if (!rideHostId && !walker.riding) return;
+  if (walker.riding) walker.unboard();
+  rideHostId = '';
+  $('tip').textContent = tipOnShore || $('tip').textContent;
+  toast(hostLeft ? L('🏝 사공이 배에서 내려서 물가로 돌아왔어요', '🏝 The rower went ashore, so you’re back on the shore') : L('🏝 물가로 돌아왔어요', '🏝 Back on the shore'), 2600);
+}
 function updateBoatUI() {
   const st = walker.state();
-  const want = screen !== 'lake' && screen !== 'card' ? '' : walker.inBoat ? 'out' : (st.nearWater && !walker.busy() ? 'in' : '');
+  if (rideHostId) { const h = others.get(rideHostId); if (!h || !h.w.inBoat) leaveRide(true); }
+  rideOffer = !walker.inBoat && !walker.riding && !walker.busy() ? boatToJoin() : '';
+  const want = screen !== 'lake' && screen !== 'card' ? '' : walker.riding ? 'out' : walker.inBoat ? 'out' : rideOffer ? 'ride' : (st.nearWater && !walker.busy() ? 'in' : '');
   if (want === boatShown) return;
   boatShown = want;
   $('boatBtn').classList.toggle('hidden', !want);
-  $('boatBtn').textContent = want === 'out' ? L('🏝 내리기', '🏝 Go ashore') : L('⛵ 배 타기', '⛵ Take the boat');
-  $('launchBtn').classList.toggle('hidden', walker.inBoat || walker.busy());
+  $('boatBtn').textContent = want === 'out' ? L('🏝 내리기', '🏝 Go ashore') : want === 'ride' ? L('⛵ 같이 타기', '⛵ Ride along') : L('⛵ 배 타기', '⛵ Take the boat');
+  $('launchBtn').classList.toggle('hidden', walker.inBoat || walker.riding || walker.busy());
   $('emoteBtn').classList.toggle('hidden', walker.inBoat);
 }
 $('boatBtn').onclick = (e) => {
   e.stopPropagation(); audio.start(); closeCard();
+  if (walker.riding) { leaveRide(false); boatShown = '?'; updateBoatUI(); return; }
+  if (!walker.inBoat && rideOffer) {                 // hop into their boat, on the bow bench facing them
+    const host = others.get(rideOffer);
+    if (host && host.w.inBoat) {
+      tipOnShore = $('tip').textContent;
+      walker.setRide(host.w); rideHostId = rideOffer; audio.plop();
+      net.sendPos(walker.pos.x, walker.pos.z, null, myScarf, false, false, rideHostId);
+      $('tip').textContent = L('사공이 노를 저어요 · 등불을 누르면 가까이서 읽어요 · 👋 인사도 해 보세요', 'Your rower is rowing · tap a lantern to read it · try waving 👋');
+      toast(L('⛵ 배에 함께 탔어요 · 마주 보고 앉았어요', '⛵ You’re riding along, facing your rower'), 3200);
+    }
+    boatShown = '?'; updateBoatUI(); return;
+  }
   if (walker.inBoat) {
     if (walker.unboard()) { audio.plop(); $('tip').textContent = tipOnShore; toast(L('🏝 물가로 돌아왔어요', '🏝 Back on the shore'), 2200); }
   } else if (walker.board()) {
@@ -1585,7 +1629,7 @@ const cat = createCat(scene, shore, { bond: save.catBond });
 let catSaveT = 0, purrT = 0;
 function updateCat(dt) {
   const st = walker.state();
-  cat.update(dt, T, { pos: walker.pos, yaw: walker.yaw, moving: st.moving, sitting: walker.sitting, busy: walker.busy(), boat: walker.inBoat });
+  cat.update(dt, T, { pos: walker.pos, yaw: walker.yaw, moving: st.moving, sitting: walker.sitting, busy: walker.busy(), boat: walker.inBoat || walker.riding });
   if (screen === 'title') return;
   if (Math.hypot(cat.pos.x - walker.pos.x, cat.pos.z - walker.pos.z) < 3) { save.catBond += dt / 60; cat.bond = save.catBond; }
   if ((catSaveT += dt) > 30) { catSaveT = 0; persist(); }
@@ -1775,6 +1819,7 @@ function walkToScreenPoint(cx, cy) {
   if (walker.busy()) return;
   const ndc = new THREE.Vector2((cx / window.innerWidth) * 2 - 1, -(cy / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
+  if (walker.riding) return;                 // a passenger does not steer
   if (walker.inBoat) {                       // afloat: row toward the tapped water
     const p = new THREE.Vector3(); if (!raycaster.ray.intersectPlane(waterPlane, p)) return;
     walker.walkTo(p.x, p.z); showTapMark(p.x, p.z); return;

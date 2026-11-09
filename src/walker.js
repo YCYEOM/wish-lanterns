@@ -214,7 +214,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
   const view = { yaw: 0, pitch: 0, wYaw: 0, wPitch: 0 };
   const YAW_MAX = 2.4, PITCH_MIN = -0.55, PITCH_MAX = 0.6;
   function viewDir() {                   // unit {x, z}: where the camera looks (the lake direction turned by the view yaw)
-    const f = inBoat ? { x: -Math.sin(yaw), z: -Math.cos(yaw) } : lakeDir(), c = Math.cos(view.yaw), s = Math.sin(view.yaw);
+    const f = inBoat || ride ? { x: -Math.sin(yaw), z: -Math.cos(yaw) } : lakeDir(), c = Math.cos(view.yaw), s = Math.sin(view.yaw);
     return { x: f.x * c - f.z * s, z: f.x * s + f.z * c };
   }
   // launch ceremony: kneel to set a lantern on the water, or lift it overhead for the sky
@@ -227,6 +227,9 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
   // the rowboat (built the first time it is used): the character sits on the bench and rows; the lantern
   // hangs from a little pole at the bow while afloat
   let boat = null, inBoat = false, rowPh = 0, rowAmt = 0, boatSpeed = 0;
+  // a passenger in someone else's boat: sits on the bow bench facing the rower; the boat is theirs to steer
+  let ride = null;
+  const SEAT_FWD = 1.05;
   const _hand = new THREE.Vector3(), _dir = new THREE.Vector3(), _xAxis = new THREE.Vector3(1, 0, 0);
   const waterOK = (x, z) => waterDist(x, z) < -1.6;
   function buildBoat() {
@@ -236,7 +239,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     const hull = new THREE.Mesh(hullGeo, new THREE.MeshLambertMaterial({ color: 0x7a5236, emissive: 0x24160c, flatShading: true, side: THREE.DoubleSide }));
     hull.position.y = 0.32; g.add(hull);
     const gun = new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 5, 24), rim); gun.rotation.x = Math.PI / 2; gun.scale.set(0.78, 1.95, 1); gun.position.y = 0.32; g.add(gun);
-    for (const z of [-0.2, 0.75]) { const b = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.06, 0.32), hullMat); b.position.set(0, 0.28, z); g.add(b); }
+    for (const [z, w] of [[-0.2, 1.4], [0.75, 1.4], [-1.05, 1.15]]) { const b = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, 0.32), hullMat); b.position.set(0, 0.28, z); g.add(b); }   // the bow bench is the passenger's
     // oars: each turns on its oarlock at the gunwale; its local +x runs from the rower's hand out through the
     // oarlock to the blade, and is re-aimed every frame so the handle is always in the hand
     const oars = [-1, 1].map((s) => {
@@ -286,7 +289,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
   const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
   function animate(dt, T) {
-    const speed = inBoat ? 0 : Math.hypot(vel.x, vel.z);
+    const speed = inBoat || ride ? 0 : Math.hypot(vel.x, vel.z);
     const wa = Math.min(1, speed / SPEED);
     walkAmt += (wa - walkAmt) * Math.min(1, dt * 8);
     phase += dt * (2.0 + speed * 2.1);
@@ -335,7 +338,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     }
 
     // emotes on top of everything else
-    sitAmt += ((sitting || inBoat ? 1 : 0) - sitAmt) * Math.min(1, dt * 3.5);
+    sitAmt += ((sitting || inBoat || ride ? 1 : 0) - sitAmt) * Math.min(1, dt * 3.5);
     let wave = 0, bow = 0, heart = 0, jump = 0, hopY = 0;
     if (emo) {
       emo.t += dt;
@@ -378,7 +381,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       armL.rotation.x = mix(armL.rotation.x, 0.25, bow); armL.rotation.z = mix(armL.rotation.z, 0.1, bow);
       legL.rotation.x += BOW * bow; legR.rotation.x += BOW * bow;
     }
-    fig.position.y = hopY * 0.38 + (inBoat ? 0.3 : 0);
+    fig.position.y = hopY * 0.38 + (inBoat || ride ? 0.3 : 0);
     if (inBoat) {                         // rowing: both hands pull the oars in a slow circle, the body leans with the stroke
       const s1 = Math.sin(rowPh), c1 = Math.cos(rowPh);
       armL.rotation.x = 0.95 + s1 * 0.5 * rowAmt; armR.rotation.x = 0.95 + s1 * 0.5 * rowAmt;
@@ -451,6 +454,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       target = null; onArrive = null; cam.init = false; cam.boom = undefined; moving = false; cer = null; kneel = lift = 0;
       emo = null; sitting = false; sitAmt = 0; bubble.visible = false; fig.position.y = 0;
       if (inBoat && !opts.remote) this.setBoat(false);
+      if (ride && !opts.remote) this.setRide(null);
       view.yaw = view.pitch = view.wYaw = view.wPitch = 0;
     },
     // start the launch pose; returns its timing { dur, release } (seconds)
@@ -472,13 +476,13 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       cam.init = false; cam.boom = undefined;
       return true;
     },
-    // back onto the sand at the nearest shore
+    // back onto the sand at the nearest shore (the rower, or a passenger)
     unboard() {
-      if (!inBoat) return false;
+      if (!inBoat && !ride) return false;
       let p = null;
       for (const d of [1.4, 2.4, 3.6, 5]) { const q = shore.nearestShore(pos.x, pos.z, d); if (walkable(q.x, q.z)) { p = q; break; } }
       if (!p) return false;
-      this.setBoat(false);
+      if (ride) this.setRide(null); else this.setBoat(false);
       pos.set(p.x, groundY(p.x, p.z), p.z); yaw = Math.atan2(-(LAKE.cx - p.x), -(LAKE.cz - p.z));
       cam.init = false; cam.boom = undefined;
       return true;
@@ -492,10 +496,20 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       if (!on) { root.rotation.set(0, yaw, 0); fig.position.y = 0; }
     },
     get inBoat() { return inBoat; },
+    // ride in another walker's boat (host: that walker), or null to stop riding (where it is; unboard() steps ashore)
+    setRide(host) {
+      if (host === ride) return;
+      if (host && inBoat) this.setBoat(false);
+      ride = host || null;
+      target = null; onArrive = null; vel.x = vel.z = 0; sitting = false; emo = null; bubble.visible = false;
+      cam.init = false; cam.boom = undefined;
+      if (!ride) { root.rotation.set(0, yaw, 0); fig.position.y = 0; }
+    },
+    get riding() { return !!ride; },
     get row() { return { ph: rowPh, amt: rowAmt, speed: boatSpeed }; },
     // a little action: 'wave' | 'bow' | 'jump' | 'heart' (one-shot), or 'sit' (toggles; moving stands up again)
     emote(kind) {
-      if (cer || inBoat) return false;
+      if (cer || inBoat || (ride && kind === 'sit')) return false;
       if (kind === 'sit') { sitting = !sitting; emo = null; bubble.visible = false; target = null; onArrive = null; return true; }
       if (!EMOTES[kind]) return false;
       sitting = false;
@@ -540,6 +554,18 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     get view() { return { yaw: +view.wYaw.toFixed(3), pitch: +view.wPitch.toFixed(3) }; },
     update(dt, keys, T) {
       if (inBoat) return this.updateBoat(dt, keys, T);
+      if (ride) {                          // on the bow bench of the host's boat, facing the rower
+        if (!ride.inBoat) { if (!this.unboard()) this.setRide(null); }   // the rower went ashore: so do we
+        else {
+          const hy = ride.yaw, hx = -Math.sin(hy), hz = -Math.cos(hy);
+          pos.set(ride.pos.x + hx * SEAT_FWD, 0, ride.pos.z + hz * SEAT_FWD);
+          yaw = wrap(hy + Math.PI); moving = false;
+          root.position.set(pos.x, Math.sin(T * 1.3) * 0.04, pos.z);
+          root.rotation.set(-Math.sin(T * 1.1) * 0.025, yaw, -Math.cos(T * 0.9) * 0.03);
+          animate(dt, T);
+          return false;
+        }
+      }
       const f = viewDir();                 // "forward" is where the camera looks (the lake, unless turned)
       const rx = -f.z, rz = f.x;           // screen-right
       let ix = 0, iz = 0;
@@ -650,7 +676,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     },
     state() {
       const d = waterDist(pos.x, pos.z);
-      return { x: +pos.x.toFixed(2), z: +pos.z.toFixed(2), yaw: +yaw.toFixed(3), moving, nearWater: d < NEAR_WATER, waterDist: +d.toFixed(2), sitting, emote: emo ? emo.kind : null, boat: inBoat };
+      return { x: +pos.x.toFixed(2), z: +pos.z.toFixed(2), yaw: +yaw.toFixed(3), moving, nearWater: d < NEAR_WATER, waterDist: +d.toFixed(2), sitting, emote: emo ? emo.kind : null, boat: inBoat, riding: !!ride };
     },
     NEAR_WATER,
     // take this character out of the world (another player left)

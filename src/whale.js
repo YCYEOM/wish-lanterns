@@ -7,7 +7,7 @@
 //   whale.start(seed) / whale.update(dt, T) / whale.lift(x, z) -> 0..1 how much a lantern there is lifted
 import * as THREE from '../vendor/three.module.js';
 
-export const WHALE_SLOT = 420;          // seconds: about one in two slots has a whale → every ~12 minutes
+export const WHALE_SLOT = 600;          // seconds: a whale every 10 minutes (30 s into each slot), the same moment for everyone
 const DUR = 30;                          // seconds from the first glow to the last
 
 export function createWhale(scene, glowTex) {
@@ -96,7 +96,7 @@ export function createWhale(scene, glowTex) {
     get active() { return !!run; },
     schedule(nowMs, hash) {
       const slot = Math.floor(nowMs / 1000 / WHALE_SLOT);
-      if (slot !== slotSeen) { slotSeen = slot; run && 0; this._at = hash(slot, 11) < 0.5 ? (slot * WHALE_SLOT + 30 + hash(slot, 12) * (WHALE_SLOT - 80)) * 1000 : 0; this._slot = slot; }
+      if (slot !== slotSeen) { slotSeen = slot; run && 0; this._at = (slot * WHALE_SLOT + 30) * 1000; this._slot = slot; }
       if (!run && this._at && nowMs >= this._at && nowMs < this._at + 2000) { this.start(hash(this._slot, 13), hash(this._slot, 14)); this._at = 0; return true; }
       return false;
     },

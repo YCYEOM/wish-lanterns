@@ -278,3 +278,9 @@ https://ycyeom.github.io/wish-lanterns/
   topics; season and weather names too. Lines may be up to 40 characters (English); Korean input keeps 30.
   The server (data.js imported in the Worker) stays Korean. Admin page stays Korean. `.studio/i18n.mjs` checks
   no Hangul is visible in English (title, lake, compose, card, diary, music, actions).
+- Whale: every 10 minutes, 30 s into each 600 s slot (WHALE_SLOT), the same moment for everyone.
+- Riding along: within 6 m of someone else's boat whose bow seat is free, ⛵ 같이 타기 seats you on the bow bench
+  facing the rower (walker `setRide(host)`: placed from the host's position/heading each frame, seated, no
+  steering; waves etc. still work). Positions carry `rd` (the host's id; `net.myId` = server id / trystero
+  selfId); the host's client renders the passenger in its own boat and says someone joined. 🏝 steps ashore;
+  if the rower goes ashore (or leaves), the passenger is set down on the nearest shore. `.studio/ride.mjs`.

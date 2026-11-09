@@ -132,7 +132,7 @@ export class Lake extends DurableObject {
     const since = Math.max(num(url.searchParams.get('since')) * 1000, now - HEART_TTL);
     const away = this.sql.exec('SELECT id, h FROM hearts WHERE owner = ? AND at > ? LIMIT 200', owner, since).toArray();
     const peers = [];
-    for (const ws of others) { const a = ws.deserializeAttachment(); if (a && a.x !== null) peers.push({ id: a.id, x: a.x, z: a.z, s: a.s, sit: a.sit | 0, b: a.b | 0 }); }
+    for (const ws of others) { const a = ws.deserializeAttachment(); if (a && a.x !== null) peers.push({ id: a.id, x: a.x, z: a.z, s: a.s, sit: a.sit | 0, b: a.b | 0, rd: a.rd || '' }); }
     server.send(JSON.stringify({ t: 'hi', lake: this.lake, id, n: others.length + 1, lanterns, peers, away, now }));
     this.broadcast({ t: 'j', id, n: others.length + 1 }, server);
     this.report(others.length + 1);
@@ -194,9 +194,9 @@ export class Lake extends DurableObject {
         const x = num(d.x), z = num(d.z);
         if (Math.abs(x) > 400 || Math.abs(z) > 400) return;
         const cer = d.cer === 'water' || d.cer === 'sky' ? d.cer : 0;
-        me.x = Math.round(x * 100) / 100; me.z = Math.round(z * 100) / 100; me.cer = cer; me.s = num(d.s) | 0; me.sit = d.sit ? 1 : 0; me.b = d.b ? 1 : 0;
+        me.x = Math.round(x * 100) / 100; me.z = Math.round(z * 100) / 100; me.cer = cer; me.s = num(d.s) | 0; me.sit = d.sit ? 1 : 0; me.b = d.b ? 1 : 0; me.rd = str(d.rd, 16);
         ws.serializeAttachment(me);
-        this.broadcast({ t: 'p', id: me.id, x: me.x, z: me.z, cer, s: me.s, sit: me.sit, b: me.b }, ws);
+        this.broadcast({ t: 'p', id: me.id, x: me.x, z: me.z, cer, s: me.s, sit: me.sit, b: me.b, rd: me.rd }, ws);
         return;
       }
       case 'l': {                                    // a new lantern: kept a day, sent to everyone here now
