@@ -14,7 +14,7 @@ export function createWhale(scene, glowTex) {
   const root = new THREE.Group(); root.visible = false; root.userData.tag = 'light-whale'; scene.add(root);
   const uniforms = { time: { value: 0 }, fade: { value: 0 } };
   const mat = new THREE.ShaderMaterial({
-    uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+    uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.FrontSide, fog: false,
     vertexShader: `varying vec3 vN; varying vec3 vW; varying vec3 vL;
       void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vL = position; vN = normalize(mat3(modelMatrix) * normal);
         gl_Position = projectionMatrix * viewMatrix * w; }`,
@@ -24,10 +24,15 @@ export function createWhale(scene, glowTex) {
         vec3 V = normalize(cameraPosition - vW);
         float rim = pow(1.0 - abs(dot(normalize(vN), V)), 2.2);
         vec3 base = mix(vec3(0.15, 0.55, 1.0), vec3(0.65, 0.95, 1.0), rim);
-        // little stars inside the body, drifting
-        vec3 q = vL * 3.2 + vec3(0.0, time * 0.15, 0.0);
-        float st = step(0.965, h(floor(q))) * (0.6 + 0.4 * sin(time * 3.0 + h(floor(q) + 2.0) * 20.0));
-        float a = (0.38 + rim * 1.1) + st * 1.2;
+        // little stars inside the body: a soft round dot in a few of the cells, twinkling
+        vec3 q = vL * 2.2 + vec3(0.0, time * 0.12, 0.0), c = floor(q), f = fract(q) - 0.5;
+        vec3 o = (vec3(h(c + 1.3), h(c + 2.7), h(c + 5.1)) - 0.5) * 0.6;
+        float on = step(0.9, h(c));
+        float st = on * exp(-dot(f - o, f - o) * 140.0) * (0.55 + 0.45 * sin(time * 2.5 + h(c + 9.0) * 30.0));
+        // the long grooves of a humpback's throat, faint lines along the underside
+        float belly = smoothstep(0.1, -0.5, vL.y) * smoothstep(-6.0, -1.0, vL.z) * (1.0 - smoothstep(1.0, 3.0, vL.z));
+        float groove = belly * smoothstep(0.75, 1.0, sin(vL.x * 22.0)) * 0.35;
+        float a = (0.5 + rim * 1.2) + st * 1.6 + groove;
         // under the water: dimmer and deeper blue, melting away with depth
         float under = clamp(-vW.y / 6.0, 0.0, 1.0);
         vec3 col = mix(base, vec3(0.05, 0.25, 0.6), under) + st * vec3(1.0, 0.95, 0.85);
@@ -36,20 +41,32 @@ export function createWhale(scene, glowTex) {
       }`,
   });
   // body: a lathe round the length (z), blunt head at -z, tapering to the tail
+  // radius along the length (t 0 = snout, 1 = tail stock): a full rounded head and chest, a long taper
+  const radius = (t) => {
+    if (t < 0.22) return 1.7 * Math.sin((t / 0.22) * Math.PI / 2) ** 0.7;
+    const k = (t - 0.22) / 0.78;
+    return Math.max(0.07, 1.7 * (1 - k ** 1.6) * (1 - 0.25 * k));
+  };
   const prof = [];
-  for (let i = 0; i <= 24; i++) {
-    const t = i / 24, z = -7 + t * 14;
-    const r = t < 0.18 ? 1.05 * Math.sqrt(t / 0.18) * (0.75 + 0.25 * t / 0.18) : 1.05 * Math.pow(1 - (t - 0.18) / 0.82, 1.15) * (1 - 0.1 * Math.sin(t * 3));
-    prof.push(new THREE.Vector2(Math.max(0.02, r * 1.55), z));
+  for (let i = 0; i <= 48; i++) { const t = i / 48; prof.push(new THREE.Vector2(Math.max(0.01, radius(t)), -7 + t * 14)); }
+  const bodyGeo = new THREE.LatheGeometry(prof, 36); bodyGeo.rotateX(Math.PI / 2); bodyGeo.scale(1, 0.86, 1);
+  { // a flatter underside: pull the lower half in a little
+    const p = bodyGeo.attributes.position;
+    for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (y < 0) p.setY(i, y * 0.9); }
+    bodyGeo.computeVertexNormals();
   }
-  const bodyGeo = new THREE.LatheGeometry(prof, 20); bodyGeo.rotateX(Math.PI / 2); bodyGeo.scale(1, 0.75, 1);
   const fig = new THREE.Group(); fig.scale.setScalar(1.5); root.add(fig);
   const body = new THREE.Mesh(bodyGeo, mat); fig.add(body);
-  const finGeo = new THREE.SphereGeometry(1, 10, 6); finGeo.scale(1.9, 0.12, 0.7);
-  const fins = [-1, 1].map((s) => { const f = new THREE.Mesh(finGeo, mat); f.position.set(1.6 * s, -0.5, -2.6); f.rotation.set(0, 0.5 * s, 0.4 * s); fig.add(f); return f; });
+  // long humpback pectorals, hinged at the body
+  const finGeo = new THREE.SphereGeometry(1, 20, 10); finGeo.scale(2.6, 0.09, 0.55); finGeo.translate(2.4, 0, 0);
+  const fins = [-1, 1].map((s) => {
+    const f = new THREE.Group(); f.position.set(1.2 * s, -0.6, -3.0); f.scale.x = s; f.userData.s = s; fig.add(f);
+    const m = new THREE.Mesh(finGeo, mat); m.rotation.y = 0.35; f.add(m); return f;
+  });
   const tail = new THREE.Group(); tail.position.set(0, 0, 6.6); fig.add(tail);
-  const flukeGeo = new THREE.SphereGeometry(1, 10, 6); flukeGeo.scale(1.7, 0.1, 0.8);
-  [-1, 1].forEach((s) => { const f = new THREE.Mesh(flukeGeo, mat); f.position.set(1.35 * s, 0, 0.5); f.rotation.y = -0.45 * s; tail.add(f); });
+  // wide, swept, horizontal flukes
+  const flukeGeo = new THREE.SphereGeometry(1, 20, 10); flukeGeo.scale(1.9, 0.07, 0.62); flukeGeo.translate(1.75, 0, 0);
+  [-1, 1].forEach((s) => { const g2 = new THREE.Group(); g2.scale.x = s; g2.rotation.y = -0.42 * s; tail.add(g2); g2.add(new THREE.Mesh(flukeGeo, mat)); });
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0x6fc8ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0 }));
   halo.scale.set(36, 18, 1); root.add(halo);
   // sparkles shed along its back
@@ -102,7 +119,7 @@ export function createWhale(scene, glowTex) {
       fig.rotation.y = Math.atan2(-dx, -dz);
       fig.rotation.x = Math.atan2(dy, Math.hypot(dx, dz));
       tail.rotation.x = Math.sin(T * 1.7) * 0.35;
-      fins.forEach((f, i) => { f.rotation.z = (i ? -1 : 1) * (0.4 + Math.sin(T * 1.2) * 0.15); });
+      fins.forEach((f, i) => { f.rotation.z = -f.userData.s * (0.32 + Math.sin(T * 1.1) * 0.14); f.rotation.x = Math.sin(T * 1.1 + i) * 0.08; });   // both reach out and a little down
       uniforms.fade.value = Math.min(1, run.t / 3) * (1 - Math.max(0, (run.t - DUR + 3) / 3));
       halo.material.opacity = 0.6 * uniforms.fade.value * (P.y > -2 ? 1 : 0.6);
       halo.position.set(0, Math.max(-P.y, 0) * 0 + 0.5, 0);

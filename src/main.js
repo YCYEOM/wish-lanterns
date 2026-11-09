@@ -8,6 +8,7 @@ import { LITE, SOFTWARE_GPU } from './quality.js';
 import { createCat } from './cat.js';
 import { createStones, NOTES } from './stones.js';
 import { createWhale } from './whale.js';
+import { createWake } from './wake.js';
 import { EN, L, setLang } from './i18n.js';
 const T_ = L;   // the same, for code where L names a lantern
 import { makeCoverDemos } from './cover-shot.js';
@@ -971,6 +972,7 @@ function update(dt) {
   updateTapMark(dt);
   updateLanterns(dt);
   updateWhale(dt);
+  updateWakes(dt);
   updateSparks(dt);
   updateStar(dt);
   for (const r of others.values()) r.w.update(dt, NO_KEYS, T);
@@ -1515,8 +1517,34 @@ $('boatBtn').onclick = (e) => {
   }
   boatShown = '?'; updateBoatUI();
 };
+// ---- ripples: boats leave a V of rings from the stern and a ring where each oar blade dips
+const wake = createWake(scene);
+const wakeState = new Map();   // walker -> { x, z, t, ph }
+function boatWake(w, dt) {
+  if (!w.inBoat) { wakeState.delete(w); return; }
+  let st = wakeState.get(w); if (!st) { st = { x: w.pos.x, z: w.pos.z, t: 0, ph: 0 }; wakeState.set(w, st); }
+  const dx = w.pos.x - st.x, dz = w.pos.z - st.z, sp = dt > 0 ? Math.hypot(dx, dz) / dt : 0;
+  st.x = w.pos.x; st.z = w.pos.z;
+  const yaw = w.yaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = -fz, rz = fx;
+  if (sp > 0.25 && (st.t -= dt) < 0) {
+    st.t = 0.38;
+    const k = Math.min(1, sp / 2.5);
+    // two rings off the stern quarters, stretched along the boat: together they spread as a V behind it
+    for (const s of [-1, 1]) wake.ring(w.pos.x - fx * 1.7 + rx * 0.45 * s, w.pos.z - fz * 1.7 + rz * 0.45 * s, 1.2 + k * 1.6, 0.7 + k * 0.6, 1.6, yaw);
+  }
+  // the oars: a ring each time the blades go into the water
+  const r = w.row, s1 = Math.sin(r.ph);
+  if (r.amt > 0.3 && st.ph <= 0 && s1 > 0) for (const s of [-1, 1]) wake.ring(w.pos.x + rx * 2.1 * s + fx * 0.3, w.pos.z + rz * 2.1 * s + fz * 0.3, 0.9, 0.9);
+  st.ph = s1;
+}
+function updateWakes(dt) {
+  boatWake(walker, dt);
+  for (const o of others.values()) boatWake(o.w, dt);
+  wake.update(dt);
+}
 // ---- the whale of light: on the shared clock (whale.js), so the lake sees it together
 const whale = createWhale(scene, GLOW);
+let whalePrevY = -9;
 function whaleArrives() {
   if (screen === 'title') return;
   audio.whaleSong();
@@ -1525,7 +1553,11 @@ function whaleArrives() {
 function updateWhale(dt) {
   if (whale.schedule(Date.now(), slotHash)) whaleArrives();
   whale.update(dt, T);
-  if (!whale.active) return;
+  if (!whale.active) { whalePrevY = -9; return; }
+  // where it breaks the surface (rising, leaping out, falling back), the lake rings wide
+  const wp = whale.pos;
+  if ((whalePrevY < -0.3) !== (wp.y < -0.3)) for (let i = 0; i < 3; i++) wake.ring(wp.x + (i - 1) * 3, wp.z, 5 + i * 2.5, 1.2);
+  whalePrevY = wp.y;
   // lanterns it passes are lifted on its back for a moment and glow brighter
   for (const L of lanterns) {
     if (L.mode !== 'water') continue;

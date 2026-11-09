@@ -492,6 +492,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       if (!on) { root.rotation.set(0, yaw, 0); fig.position.y = 0; }
     },
     get inBoat() { return inBoat; },
+    get row() { return { ph: rowPh, amt: rowAmt, speed: boatSpeed }; },
     // a little action: 'wave' | 'bow' | 'jump' | 'heart' (one-shot), or 'sit' (toggles; moving stands up again)
     emote(kind) {
       if (cer || inBoat) return false;
