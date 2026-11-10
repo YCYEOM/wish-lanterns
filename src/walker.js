@@ -481,10 +481,24 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       return true;
     },
     // back onto the sand at the nearest shore (the rower, or a passenger)
-    unboard() {
+    // the nearest place on the walkable beach to come ashore from the water: { shore: {x,z}, water: {x,z} }
+    landing() {
+      let best = null, bd = Infinity;
+      for (let i = 0; i < 180; i++) {
+        const a = (i / 180) * Math.PI * 2, dx = Math.cos(a) * 200, dz = Math.sin(a) * 200;
+        const q = shore.nearestShore(LAKE.cx + dx, LAKE.cz + dz, 1.4);
+        if (!walkable(q.x, q.z)) continue;
+        const d = Math.hypot(q.x - pos.x, q.z - pos.z);
+        if (d < bd) { bd = d; best = { shore: q, water: shore.nearestShore(q.x, q.z, -2.2), d }; }
+      }
+      return best;
+    },
+    // step ashore; far out (no beach in reach) it fails unless force, which lands on the nearest beach
+    unboard(force = false) {
       if (!inBoat && !ride) return false;
       let p = null;
       for (const d of [1.4, 2.4, 3.6, 5]) { const q = shore.nearestShore(pos.x, pos.z, d); if (walkable(q.x, q.z)) { p = q; break; } }
+      if (!p && force) { const l = this.landing(); if (l) p = l.shore; }
       if (!p) return false;
       if (ride) this.setRide(null); else this.setBoat(false);
       pos.set(p.x, groundY(p.x, p.z), p.z); yaw = Math.atan2(-(LAKE.cx - p.x), -(LAKE.cz - p.z));
@@ -535,12 +549,12 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     },
     get camLook() { return cam.look; },
     get timing() { return cer && { t: cer.t, ...CER[cer.mode] }; },
-    walkTo(x, z, cb) {
+    walkTo(x, z, cb, hurry = false) {
       // clamp the goal onto the beach: step it back toward the character until it is walkable
       if (inBoat) {                       // afloat: row toward a point on open water
         let gx = x, gz = z;
         for (let i = 0; i < 40 && !waterOK(gx, gz); i++) { gx += (pos.x - gx) * 0.12; gz += (pos.z - gz) * 0.12; }
-        target = { x: gx, z: gz }; onArrive = cb || null; return;
+        target = { x: gx, z: gz, hurry }; onArrive = cb || null; return;
       }
       if (Math.hypot(x - pos.x, z - pos.z) > 0.3) sitting = false;   // walking off stands up
       let gx = x, gz = z;
@@ -560,7 +574,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     update(dt, keys, T) {
       if (inBoat) return this.updateBoat(dt, keys, T);
       if (ride) {                          // on the bow bench of the host's boat, facing the rower
-        if (!ride.inBoat) { if (!this.unboard()) this.setRide(null); }   // the rower went ashore: so do we
+        if (!ride.inBoat) { if (!this.unboard(true)) this.setRide(null); }   // the rower went ashore: so do we
         else {
           const hy = ride.yaw, hx = -Math.sin(hy), hz = -Math.cos(hy);
           pos.set(ride.pos.x + hx * SEAT_FWD, 0, ride.pos.z + hz * SEAT_FWD);
@@ -631,16 +645,19 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
           fwd = Math.abs(d) < 1.1 ? Math.min(1, l / 4 + 0.25) : 0.15;
         }
       }
-      yaw = wrap(yaw + turn * 1.15 * dt);
-      boatSpeed += (fwd * 2.8 - boatSpeed) * Math.min(1, dt * (fwd ? 1.4 : 0.6));
+      // heading back to the beach on its own: pulls hard (about three times the speed), turns quicker
+      const hurry = target && target.hurry ? 3.2 : 1;
+      yaw = wrap(yaw + turn * 1.15 * Math.min(2, hurry) * dt);
+      boatSpeed += (fwd * 2.8 * hurry - boatSpeed) * Math.min(1, dt * (fwd ? 1.4 * hurry : 0.6));
       const hx = -Math.sin(yaw), hz = -Math.cos(yaw);
       const nx = pos.x + hx * boatSpeed * dt, nz = pos.z + hz * boatSpeed * dt;
-      if (waterOK(nx, nz)) { pos.x = nx; pos.z = nz; } else { boatSpeed *= -0.25; target = null; }
+      if (waterOK(nx, nz)) { pos.x = nx; pos.z = nz; }
+      else { boatSpeed *= -0.25; const cb = target && target.hurry ? onArrive : null; target = null; onArrive = null; if (cb) cb(); }   // bumped the shore on the way back: land here
       vel.x = hx * boatSpeed; vel.z = hz * boatSpeed;
       turnRate += (turn * 1.15 - turnRate) * Math.min(1, dt * 4);
       moving = Math.abs(boatSpeed) > 0.25 || !!turn;
       rowAmt += ((fwd || turn ? 1 : 0) - rowAmt) * Math.min(1, dt * 3);
-      rowPh += dt * 3.4 * Math.max(0.15, rowAmt);
+      rowPh += dt * 3.4 * Math.max(0.15, rowAmt) * Math.min(1.8, hurry);
       pos.y = 0;
       root.position.set(pos.x, Math.sin(T * 1.3) * 0.04, pos.z);
       root.rotation.set(Math.sin(T * 1.1) * 0.025, yaw, Math.cos(T * 0.9) * 0.03);

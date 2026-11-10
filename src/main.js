@@ -1536,7 +1536,7 @@ function boatToJoin() {
 }
 function leaveRide(hostLeft) {
   if (!rideHostId && !walker.riding) return;
-  if (walker.riding) walker.unboard();
+  if (walker.riding) walker.unboard(true);   // far out, a passenger is set down on the nearest beach
   rideHostId = '';
   $('tip').textContent = tipOnShore || $('tip').textContent;
   toast(hostLeft ? L('🏝 사공이 배에서 내려서 물가로 돌아왔어요', '🏝 The rower went ashore, so you’re back on the shore') : L('🏝 물가로 돌아왔어요', '🏝 Back on the shore'), 2600);
@@ -1568,7 +1568,16 @@ $('boatBtn').onclick = (e) => {
     boatShown = '?'; updateBoatUI(); return;
   }
   if (walker.inBoat) {
-    if (walker.unboard()) { audio.plop(); $('tip').textContent = tipOnShore; toast(L('🏝 물가로 돌아왔어요', '🏝 Back on the shore'), 2200); }
+    const ashore = () => { audio.plop(); $('tip').textContent = tipOnShore; toast(L('🏝 물가로 돌아왔어요', '🏝 Back on the shore'), 2200); boatShown = '?'; updateBoatUI(); };
+    if (walker.unboard()) ashore();
+    else {
+      // out on the open lake, far from the beach: row back to the nearest landing on our own, then step ashore
+      const l = walker.landing();
+      if (l) {
+        walker.walkTo(l.water.x, l.water.z, () => { if (walker.inBoat && walker.unboard(true)) ashore(); }, true);
+        toast(L('🚣 가까운 해변으로 노를 저어 가요 · 도착하면 내려요', '🚣 Rowing back to the nearest beach · you’ll step ashore there'), 3200);
+      }
+    }
   } else if (walker.board()) {
     audio.plop(); tipOnShore = $('tip').textContent;
     $('tip').textContent = matchMedia('(pointer: coarse)').matches ? L('물을 누르면 그쪽으로 노를 저어요 · 등불을 누르면 가까이서 읽어요', 'Tap the water to row there · tap a lantern to read it up close') : L('W/S 노 젓기 · A/D 방향 · 물을 누르면 그쪽으로 · 등불을 눌러 읽어요', 'W/S row · A/D turn · tap the water to row there · tap a lantern to read it');
