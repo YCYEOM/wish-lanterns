@@ -212,7 +212,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
   // hand-turned view: yaw swings the camera round the character (0 = behind it, facing the lake),
   // pitch raises it (+) or brings it down toward eye level (-); both eased toward the wanted values
   const view = { yaw: 0, pitch: 0, wYaw: 0, wPitch: 0 };
-  const YAW_MAX = 2.4, PITCH_MIN = -0.55, PITCH_MAX = 0.6;
+  const PITCH_MIN = -0.55, PITCH_MAX = 0.6;
   function viewDir() {                   // unit {x, z}: where the camera looks (the lake direction turned by the view yaw)
     const f = inBoat || ride ? { x: -Math.sin(yaw), z: -Math.cos(yaw) } : lakeDir(), c = Math.cos(view.yaw), s = Math.sin(view.yaw);
     return { x: f.x * c - f.z * s, z: f.x * s + f.z * c };
@@ -567,7 +567,10 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     // turn the view by hand: dYaw/dPitch in radians; turnView(null) eases it back behind the character
     turnView(dYaw, dPitch = 0) {
       if (dYaw === null) { view.wYaw = 0; view.wPitch = 0; return; }
-      view.wYaw = Math.max(-YAW_MAX, Math.min(YAW_MAX, view.wYaw + dYaw));
+      // all the way round, as far as you like: keep the angle within ±π (the eased view follows the wrap, so no spin)
+      view.wYaw += dYaw;
+      if (view.wYaw > Math.PI) { view.wYaw -= 2 * Math.PI; view.yaw -= 2 * Math.PI; }
+      else if (view.wYaw < -Math.PI) { view.wYaw += 2 * Math.PI; view.yaw += 2 * Math.PI; }
       view.wPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, view.wPitch + dPitch));
     },
     get view() { return { yaw: +view.wYaw.toFixed(3), pitch: +view.wPitch.toFixed(3) }; },

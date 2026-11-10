@@ -203,80 +203,100 @@ export class Audio {
     else if (kind === 'pluck') note([[1, 1, 1.1, 'triangle'], [2, 0.3, 0.45], [3, 0.1, 0.25]]);   // a soft picked string
     else if (kind === 'bass') note([[1, 1, 2.6], [2, 0.25, 1.2]]);
   }
-  // the campfire, level 0..1 (how near, how big): a soft low roar of the flames under real-sounding crackle —
-  // clusters of tiny wood snaps (each a few ms of decaying noise, rung through a narrow band), now and then a
-  // bigger knot popping with a woody body, and short sizzles of sap. The lake's water hush dips near the fire.
+  // the campfire, level 0..1 (how near, how big). Modelled on Andy Farnell's fire in "Designing Sound"
+  // (Practical 11): from one shared noise, three parts —
+  //   lapping:  noise -> band-pass 30 Hz (Q 5), driven hard and soft-clipped -> the low flutter of flames
+  //   hissing:  noise -> high-pass 1 kHz, times (slow 1 Hz noise)^4 -> gas hissing out in swells
+  //   crackling: triggered when the slow noise wanders through a narrow window (so they come in clusters);
+  //             each a burst of noise, decay 0..30 ms, envelope squared, band-pass at 1.5..16 kHz, Q 1
+  // mixed 0.2 / 0.3 / 0.6, and four such generators summed through 1 kHz HP, 600, 1200, 2600 Hz bands
+  // ("fire_all"). Rendered once into a loop (crossfaded seam); a second loop joins as the fire grows.
+  // a generator: yields every few thousand samples so the render can be spread over idle moments (see _bake)
+  *_renderFire(seed, secs) {
+    const sr = this.ctx.sampleRate, n = Math.floor(sr * secs), fade = Math.floor(sr * 0.6), N = n + fade;
+    let st = seed >>> 0; const rnd = () => { st = (st + 0x6D2B79F5) >>> 0; let t = st; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const W = () => rnd() * 2 - 1;
+    // RBJ biquads
+    const biq = (type, f, q) => {
+      const w = 2 * Math.PI * f / sr, cs = Math.cos(w), al = Math.sin(w) / (2 * q);
+      let b0, b1, b2; const a0 = 1 + al, a1 = -2 * cs, a2 = 1 - al;
+      if (type === 'bp') { b0 = al; b1 = 0; b2 = -al; } else if (type === 'hp') { b0 = (1 + cs) / 2; b1 = -(1 + cs); b2 = (1 + cs) / 2; } else { b0 = (1 - cs) / 2; b1 = 1 - cs; b2 = (1 - cs) / 2; }
+      const B0 = b0 / a0, B1 = b1 / a0, B2 = b2 / a0, A1 = a1 / a0, A2 = a2 / a0;
+      let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+      return (x) => { const y = B0 * x + B1 * x1 + B2 * x2 - A1 * y1 - A2 * y2; x2 = x1; x1 = x; y2 = y1; y1 = y; return y; };
+    };
+    const out = new Float32Array(N);
+    const BANDS = [['hp', 1000, 0.7], ['bp', 600, 0.2], ['bp', 1200, 0.6], ['bp', 2600, 0.4]];
+    const gen = new Float32Array(N), slow = new Float32Array(N);
+    for (const [bt, bf, bq] of BANDS) {
+      // the slow 1 Hz noise, normalised to unit spread
+      const lp1 = biq('lp', 1, 0.5), lp1b = biq('lp', 1, 0.5); let ss = 0;
+      for (let i = 0; i < N; i++) { const v = lp1b(lp1(W())); slow[i] = v; ss += v * v; if ((i & 4095) === 0) yield; }
+      const sn = 1 / Math.sqrt(ss / N); for (let i = 0; i < N; i++) slow[i] *= sn;
+      const lapBp = biq('bp', 30, 5), lapHp1 = biq('hp', 25, 0.7), lapHp2 = biq('hp', 25, 0.7), hissHp = biq('hp', 1000, 0.7);
+      let lapS = 0, hissS = 0; const lap = new Float32Array(N), hiss = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        if ((i & 4095) === 0) yield;
+        const w = W();
+        const l = Math.tanh(lapHp1(lapBp(w) * 40)); lap[i] = lapHp2(l); lapS += lap[i] * lap[i];
+        const m = slow[i] * 0.55, m4 = m * m * m * m; hiss[i] = hissHp(W()) * m4; hissS += hiss[i] * hiss[i];
+      }
+      const lapN = 1 / Math.sqrt(lapS / N + 1e-12), hissN = 1 / Math.sqrt(hissS / N + 1e-12);
+      // crackles: slow noise (plus a little faster jitter) crossing a narrow window -> clustered triggers
+      const crack = new Float32Array(N), jit = biq('lp', 25, 0.7); let prev = 0, refr = 0, jS = 0;
+      const jv = new Float32Array(N); for (let i = 0; i < N; i++) { jv[i] = jit(W()); jS += jv[i] * jv[i]; if ((i & 4095) === 0) yield; }
+      const jn = 0.12 / Math.sqrt(jS / N);
+      const lvl = 0.9 + rnd() * 0.4;
+      for (let i = 0; i < N; i++) {
+        if ((i & 4095) === 0) yield;
+        const v = slow[i] + jv[i] * jn;
+        if (refr > 0) refr--;
+        else if ((prev < lvl) !== (v < lvl)) {
+          refr = Math.floor(sr * 0.004);
+          const dec = Math.max(1, Math.floor(sr * (0.001 + rnd() * 0.029))), f = 1500 + Math.floor(rnd() * 30) * 500, bp = biq('bp', Math.min(f, sr * 0.45), 1);
+          const amp = 0.4 + 0.6 * rnd();
+          for (let j = 0; j < dec * 1.6 && i + j < N; j++) { const e = Math.max(0, 1 - j / dec); crack[i + j] += bp(W()) * e * e * e * e * amp; }
+        }
+        prev = v;
+      }
+      let cS = 0; for (let i = 0; i < N; i++) cS += crack[i] * crack[i];
+      const cN = 0.6 / Math.sqrt(cS / N + 1e-12);
+      const band = biq(bt, bf, bq), band2 = biq(bt, bf, bq);
+      for (let i = 0; i < N; i++) { if ((i & 4095) === 0) yield; gen[i] = band2(band(crack[i] * cN * 0.2 * 3 + hiss[i] * hissN * 0.3 * 0.35 + lap[i] * lapN * 0.6)); }
+      for (let i = 0; i < N; i++) out[i] += gen[i];
+    }
+    // crossfade the tail into the head so the loop has no seam
+    const buf = this.ctx.createBuffer(1, n, sr), d = buf.getChannelData(0);
+    let pk = 0;
+    for (let i = 0; i < n; i++) { let v = out[i]; if (i < fade) { const k = i / fade; v = v * Math.sqrt(k) + out[n + i] * Math.sqrt(1 - k); } d[i] = v; pk = Math.max(pk, Math.abs(v)); }
+    const g = 0.9 / (pk || 1); for (let i = 0; i < n; i++) d[i] *= g;
+    return buf;
+  }
+  // run a render generator a few ms at a time, then hand the buffer over
+  _bake(it, done) {
+    const step = () => {
+      const t0 = performance.now(); let r;
+      do { r = it.next(); } while (!r.done && performance.now() - t0 < 3);
+      if (r.done) done(r.value); else setTimeout(step, 16);
+    };
+    step();
+  }
   setFire(level) {
     if (!this.ctx) return;
     const ctx = this.ctx;
     if (!this.fire) {
-      const sr = ctx.sampleRate, len = sr * 4, buf = ctx.createBuffer(1, len, sr), d = buf.getChannelData(0);
-      let last = 0; for (let i = 0; i < len; i++) { last = (last + 0.03 * (this.rnd() * 2 - 1)) / 1.03; d[i] = last * 4; }
-      const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
-      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180; lp.Q.value = 0.4;
-      const gain = ctx.createGain(); gain.gain.value = 0;
-      // the flames breathe: a slow uneven swell in the roar
-      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.37; const lg = ctx.createGain(); lg.gain.value = 0; lfo.connect(lg); lg.connect(gain.gain); lfo.start();
-      const out = ctx.createGain(); out.gain.value = 1; out.connect(this.master);
-      src.connect(lp); lp.connect(gain); gain.connect(out); src.start();
-      this.fire = { gain, lg, out, level: 0 };
-      // one cluster of snaps rendered into a small buffer, played through its own band
-      const cluster = (L) => {
-        const n = 0.35, cb = ctx.createBuffer(1, Math.floor(sr * n), sr), c = cb.getChannelData(0);
-        const count = 1 + Math.floor(this.rnd() * this.rnd() * 9);
-        let at = 0;
-        for (let k = 0; k < count; k++) {
-          at += Math.floor(sr * (0.004 + this.rnd() * this.rnd() * 0.06));
-          const amp = 0.25 + 0.75 * this.rnd() ** 2, dur = Math.floor(sr * (0.0006 + this.rnd() * 0.0025));
-          for (let j = 0; j < dur && at + j < c.length; j++) c[at + j] += (this.rnd() * 2 - 1) * amp * Math.exp(-j / (dur * 0.3));
-        }
-        const t = ctx.currentTime + 0.01, s0 = ctx.createBufferSource(); s0.buffer = cb;
-        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800 + this.rnd() * 4200; bp.Q.value = 0.7 + this.rnd() * 1.5;
-        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 700;
-        const g = ctx.createGain(); g.gain.value = (1.4 + this.rnd() * 1.4) * L;
-        const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-        s0.connect(hp); hp.connect(bp); bp.connect(g);
-        if (pan) { pan.pan.value = this.rnd() * 0.8 - 0.4; g.connect(pan); pan.connect(out); } else g.connect(out);
-        if (this.echo && this.rnd() < 0.3) g.connect(this.echo);
-        s0.start(t);
-      };
-      // a knot of wood bursting: a sharp crack with a short woody ring under it
-      const pop = (L) => {
-        const t = ctx.currentTime + 0.01, len2 = Math.floor(sr * 0.12), pb = ctx.createBuffer(1, len2, sr), c = pb.getChannelData(0);
-        for (let j = 0; j < len2; j++) c[j] = (this.rnd() * 2 - 1) * Math.exp(-j / (sr * 0.006)) + (j < sr * 0.03 ? (this.rnd() * 2 - 1) * 0.25 * Math.exp(-j / (sr * 0.01)) : 0);
-        const s0 = ctx.createBufferSource(); s0.buffer = pb;
-        const body = ctx.createBiquadFilter(); body.type = 'peaking'; body.frequency.value = 500 + this.rnd() * 700; body.Q.value = 3; body.gain.value = 10;
-        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 250;
-        const g = ctx.createGain(); g.gain.value = (1.3 + this.rnd() * 0.7) * L;
-        s0.connect(hp); hp.connect(body); body.connect(g); g.connect(out); if (this.echo) g.connect(this.echo);
-        s0.start(t);
-      };
-      // sap sizzling for a moment: a thin hiss swelling and fading
-      const hiss = (L) => {
-        const t = ctx.currentTime + 0.01, dur = 0.4 + this.rnd() * 0.9;
-        const s0 = ctx.createBufferSource(); s0.buffer = buf;
-        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 4000 + this.rnd() * 2500;
-        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05 * L, t + dur * 0.3); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        s0.connect(hp); hp.connect(g); g.connect(out); s0.start(t, this.rnd() * 3); s0.stop(t + dur + 0.05);
-      };
-      const tick = () => {
-        const L = this.fire.level, big = this.fire.size || 0;
-        if (L > 0.02 && ctx.state === 'running') {
-          cluster(L);
-          if (this.rnd() < 0.07 + big * 0.06) pop(L);
-          if (this.rnd() < 0.025) hiss(L);
-        }
-        // crackle comes in bursts: often quick follow-ups, sometimes a lull; a bigger fire crackles more
-        const quick = this.rnd() < 0.45;
-        setTimeout(tick, L > 0.02 ? (quick ? 40 + this.rnd() * 140 : 200 + this.rnd() * (900 - big * 400)) : 700);
-      };
-      tick();
+      const out = ctx.createGain(); out.gain.value = 0; out.connect(this.master);
+      const big = ctx.createGain(); big.gain.value = 0; big.connect(this.master);
+      const loop = (buf, dst, off) => { const s0 = ctx.createBufferSource(); s0.buffer = buf; s0.loop = true; s0.connect(dst); s0.start(0, off); };
+      // two different renders (different lengths, so they never line up the same way twice)
+      this._bake(this._renderFire(91, 9.3), (b1) => { loop(b1, out, 0); this._bake(this._renderFire(57, 7.1), (b2) => loop(b2, big, 2.3)); });
+      this.fire = { out, big, level: 0, size: 0 };
     }
     this.fire.level = level;
     const t = ctx.currentTime;
-    this.fire.gain.gain.setTargetAtTime(0.07 * level, t, 0.4);
-    this.fire.lg.gain.setTargetAtTime(0.025 * level, t, 0.4);
-    // near the fire the lake's hush steps back so the crackle carries
+    this.fire.out.gain.setTargetAtTime(0.5 * level, t, 0.3);
+    this.fire.big.gain.setTargetAtTime(0.5 * level * (this.fire.size || 0), t, 0.6);
+    // near the fire the lake's hush steps back so the fire carries
     if (this.water) this.water.gain.setTargetAtTime(0.22 * (1 - 0.6 * Math.min(1, level * 1.4)), t, 0.5);
   }
   // how big the fire is now (0..1): more knots popping, fewer lulls
