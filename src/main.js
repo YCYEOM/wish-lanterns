@@ -10,6 +10,7 @@ import { createStones, NOTES } from './stones.js';
 import { createWhale } from './whale.js';
 import { createWake } from './wake.js';
 import { createCampfire } from './campfire.js';
+import { createMelody, seoulDay, SONG_LEN } from './melody.js';
 import { EN, L, setLang } from './i18n.js';
 const T_ = L;   // the same, for code where L names a lantern
 import { makeCoverDemos } from './cover-shot.js';
@@ -38,6 +39,7 @@ function loadSave() {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
     return { launched: s.launched | 0, hearts: s.hearts | 0, received: s.received | 0, wishes: s.wishes | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [],
       log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false, starsSeen: s.starsSeen | 0, catBond: +s.catBond || 0, catMet: !!s.catMet, stonesPlayed: !!s.stonesPlayed, fireHint: !!s.fireHint,
+      melody: s.melody && typeof s.melody === 'object' ? s.melody : null, songs: s.songs | 0, digHint: !!s.digHint,
       musicCfg: { ...MUSIC_DEFAULTS, ...(s.musicCfg && typeof s.musicCfg === 'object' ? s.musicCfg : {}) } };
   } catch { return { launched: 0, hearts: 0, received: 0, wishes: 0, hidden: [], hearted: [], mine: [], log: [], heartsBy: {}, lastVisit: 0, music: true, musicCfg: { ...MUSIC_DEFAULTS } }; }
 }
@@ -975,6 +977,7 @@ function update(dt) {
   updateWhale(dt);
   updateWakes(dt);
   updateFire(dt);
+  updateMelody(dt);
   updateSparks(dt);
   updateStar(dt);
   for (const r of others.values()) r.w.update(dt, NO_KEYS, T);
@@ -1018,7 +1021,7 @@ if (EN) {
     ['#title h1', 'text', 'Wish Lanterns'], ['#title p', 'text', 'Put today’s heart in a lantern and set it on the lake'], ['#title .hint', 'text', 'Tap to begin'],
     ['#stats', 'title', 'Go to another lake'], ['#lakePanel h2', 'text', 'Choose a lake'], ['#lakeSub', 'text', 'Tap a lake to go there'],
     ['#invite', 'title', 'Copy an invite link'], ['#mute', 'title', 'Sound'], ['#music', 'title', 'Music'], ['#diaryBtn', 'title', 'My lanterns'],
-    ['#boatBtn', 'text', '⛵ Take the boat'], ['#emoteBtn', 'title', 'Actions (1-5)'],
+    ['#boatBtn', 'text', '⛵ Take the boat'], ['#digBtn', 'text', '✋ Dig in the sand'], ['#noteOk', 'text', 'Fold it away'], ['.note-title', 'text', '📜 A note from the sand'], ['#emoteBtn', 'title', 'Actions (1-5)'],
     ['[data-emote=wave]', 'html', '👋<span>Wave</span>'], ['[data-emote=bow]', 'html', '🙇<span>Bow</span>'], ['[data-emote=jump]', 'html', '🎉<span>Hop</span>'],
     ['[data-emote=heart]', 'html', '💕<span>Heart</span>'], ['[data-emote=sit]', 'html', '🪑<span>Sit</span>'],
     ['[data-emote=wave]', 'title', 'Wave (1)'], ['[data-emote=bow]', 'title', 'Bow (2)'], ['[data-emote=jump]', 'title', 'Hop (3)'], ['[data-emote=heart]', 'title', 'Heart (4)'], ['[data-emote=sit]', 'title', 'Sit (5)'],
@@ -1147,7 +1150,7 @@ const netHooks = {
   },
   // a lantern taken down (reported by several people, or by the admin): it leaves every screen
   onRemove(id) { const L = lanterns.find((l) => l.id === id && !l.mine); if (L) { if (selected === L) closeCard(); removeLantern(L); } },
-  onNote(id, i) { if (Number.isInteger(i) && i >= 0 && i < NOTES.length) playStone(i, true); },
+  onNote(id, i) { if (Number.isInteger(i) && i >= 0 && i < NOTES.length) { playStone(i, true); heardNote(id, i); } },
   onEmote(id, k) { const r = others.get(id); if (r) r.w.emote(k); },
   onWish(slot, h) { otherWish(slot, h); },
   onLeave(id) { const r = others.get(id); if (r) { r.w.dispose(); others.delete(id); } },
@@ -1645,6 +1648,7 @@ function playStone(i, remote) {
   audio.start();
   const d = Math.hypot(s.x - walker.pos.x, s.z - walker.pos.z);
   audio.stone(NOTES[i], remote ? Math.max(0, 1 - d / 45) : 1);
+  if (!remote) heardNote('', i);
   if (!remote) { net.sendNote && net.sendNote(i); if (!save.stonesPlayed) { save.stonesPlayed = true; persist(); toast(L('🎐 노래하는 돌이에요 · 같은 호수 사람들에게도 들려요', '🎐 Singing stones · everyone on the lake hears them'), 3200); } }
 }
 let stoneHintDone = false;
@@ -1652,6 +1656,87 @@ function stoneHint() {   // the first time you come near them
   if (stoneHintDone || save.stonesPlayed || screen !== 'lake') return;
   const s = stones.stones[3];
   if (Math.hypot(s.x - walker.pos.x, s.z - walker.pos.z) < 6 && Date.now() > toastBusyUntil + 300) { stoneHintDone = true; toast(L('🎐 물가의 빛나는 돌을 눌러 보세요', '🎐 Try tapping the glowing stones by the water'), 3000); }
+}
+// ---- the lake's secret song: five glinting mounds in the sand hold a note each (one note of today's melody
+// per note); play the whole song on the singing stones and the lake answers. Same song for everyone each day.
+const STONE_NAMES = [['주황', 'amber'], ['금빛', 'gold'], ['노란', 'yellow'], ['초록', 'green'], ['하늘색', 'sky-blue'], ['보라', 'violet'], ['분홍', 'pink']];
+const STONE_CSS = ['#ffb070', '#ffd27a', '#fff08a', '#9ff0b0', '#8fd8ff', '#b9a8ff', '#ffa8d8'];
+const ORD = [['첫 번째', 'first'], ['두 번째', 'second'], ['세 번째', 'third'], ['네 번째', 'fourth'], ['다섯 번째', 'fifth']];
+let melody = null, songK = 0, digSpot = null, digShown = false, digHintDone = false, melodyCheckT = 0;
+function melodyState() {
+  const day = seoulDay(Date.now());
+  if (!save.melody || save.melody.day !== day) { save.melody = { day, dug: [false, false, false, false, false], solved: false }; persist(); }
+  return save.melody;
+}
+function buildMelody() {
+  const st = melodyState();
+  if (melody && melody.day === st.day) return;
+  if (melody) scene.remove(melody.group);
+  const avoid = stones.stones.map(q => ({ x: q.x, z: q.z, r: 2.4 })).concat([{ x: fire.pos.x, z: fire.pos.z, r: 3.8 }, { x: 0, z: 16, r: 2 }]);
+  melody = createMelody(scene, shore, GLOW, { dayNum: st.day, dug: st.dug, avoid });
+}
+buildMelody();
+const songDots = (got) => melody.song.map((n, k) => got[k] ? `<i class="sd" style="--c:${STONE_CSS[n]}"></i>` : '<i class="sd q">?</i>').join('');
+function songRow() {
+  const st = melodyState(), n = st.dug.filter(Boolean).length;
+  const head = st.solved ? L('🎐 오늘의 호수 노래를 찾았어요', '🎐 You found today’s lake song') : L(`🎐 오늘의 호수 노래 · 쪽지 ${n}/${SONG_LEN}`, `🎐 Today’s lake song · notes ${n}/${SONG_LEN}`);
+  return `<span class="song-row">${head} <span class="song-dots">${songDots(st.solved ? [1, 1, 1, 1, 1] : st.dug)}</span>${save.songs ? L(` · 찾은 날 <b>${save.songs}</b>`, ` · days found <b>${save.songs}</b>`) : ''}</span>`;
+}
+function showNote(k) {
+  const st = melodyState(), n = melody.song[k], nm = STONE_NAMES[n], have = st.dug.filter(Boolean).length;
+  $('noteText').innerHTML = L(`오늘 호수의 노래,<br><b>${ORD[k][0]} 음</b>은 <span class="stone-name" style="--c:${STONE_CSS[n]}">${nm[0]} 돌</span>`,
+    `Today’s lake song:<br>the <b>${ORD[k][1]} note</b> is the <span class="stone-name" style="--c:${STONE_CSS[n]}">${nm[1]} stone</span>`);
+  $('noteSong').innerHTML = songDots(st.dug);
+  $('noteFoot').textContent = have >= SONG_LEN
+    ? L('다 모았어요! 물가의 노래하는 돌을 이 순서대로 눌러 보세요', 'All five! Play them on the singing stones by the water, in this order')
+    : L(`쪽지 ${have}/${SONG_LEN} · 모래사장 어딘가에 반짝이는 곳이 더 있어요`, `Notes ${have}/${SONG_LEN} · more glints are hiding along the beach`);
+  $('notePanel').classList.remove('hidden');
+}
+$('noteOk').onclick = (e) => { e.stopPropagation(); $('notePanel').classList.add('hidden'); };
+function startDig() {
+  const s = digSpot; if (!s || walker.busy() || walker.inBoat || walker.riding) return;
+  audio.start(); closeCard();
+  walker.emote('bow', true); melody.dig(s); audio.dig && audio.dig();
+  const st = melodyState(); st.dug[s.i] = true; persist();
+  digSpot = null;
+  setTimeout(() => { audio.chime([NOTES[melody.song[s.i]], NOTES[melody.song[s.i]] * 1.5], 0.14); showNote(s.i); }, 1900);
+}
+$('digBtn').onclick = (e) => { e.stopPropagation(); startDig(); };
+// the stones you (and each person on the lake) played lately; five in a row that match today's song wins
+const heard = new Map();
+function heardNote(id, i) {
+  const now = performance.now();
+  let h = heard.get(id); if (!h || now - h.t > 6000) { h = { seq: [], t: now }; heard.set(id, h); }
+  h.seq.push(i); h.t = now; if (h.seq.length > SONG_LEN) h.seq.shift();
+  if (melody.match(h.seq)) { h.seq = []; songFound(!id); }
+}
+function songFound(mine) {
+  songK = 1;
+  // the stones light one after another, then the lake answers: the whale's distant song
+  melody.song.forEach((n, k) => setTimeout(() => stones.hit(n), 900 + k * 260));
+  setTimeout(() => { audio.chime(melody.song.map(n => NOTES[n] / 2), 0.2); }, 900);
+  setTimeout(() => audio.whaleSong(), 2600);
+  if (!mine) { toast(L('✨ 누군가 오늘의 호수 노래를 찾았어요!', '✨ Someone found today’s lake song!'), 4200); return; }
+  const st = melodyState();
+  if (!st.solved) { st.solved = true; save.songs++; persist(); }
+  setTimeout(() => toast(L('🎐 호수의 노래를 찾았어요! 멀리서 고래가 대답해요', '🎐 You found the lake song! The whale answers from far away'), 5200), 600);
+}
+function updateMelody(dt) {
+  if ((melodyCheckT -= dt) < 0) { melodyCheckT = 20; buildMelody(); }   // a new Seoul day: a new song, fresh mounds
+  melody.update(dt, T);
+  if (songK > 0) {
+    songK = Math.max(0, songK - dt / 12);
+    const k = Math.sin(Math.min(1, songK * 6) * Math.PI / 2) * songK;
+    for (const Ln of lanterns) { Ln.glow.scale.multiplyScalar(1 + k * 0.8); Ln.glow.material.opacity = Math.min(1, Ln.glow.material.opacity + k * 0.45); }
+  }
+  const free = screen === 'lake' && !walker.inBoat && !walker.riding && !walker.busy();
+  digSpot = free ? melody.nearest(walker.pos, 1.5) : null;
+  if (!!digSpot !== digShown) { digShown = !!digSpot; $('digBtn').classList.toggle('hidden', !digShown); }
+  // the first time a glint is near: a word about it
+  if (!digHintDone && free && Date.now() > toastBusyUntil + 300) {
+    const s = melody.nearest(walker.pos, 6);
+    if (s) { digHintDone = true; if (!save.digHint) { save.digHint = true; persist(); } toast(save.songs || melodyState().dug.some(Boolean) ? L('✨ 모래 속에 반짝이는 게 있어요', '✨ Something glints in the sand') : L('✨ 모래 속에 무언가 반짝여요 · 가까이 가서 파 보세요', '✨ Something glints in the sand · go close and dig'), 3600); }
+  }
 }
 // ---- the lakeside cat: keeps you company; bond grows with minutes spent near it (saved)
 const cat = createCat(scene, shore, { bond: save.catBond });
@@ -1740,7 +1825,7 @@ function dateKST(ms) { const d = new Date(ms + 9 * 3600 * 1000); return EN ? d.t
 function openDiary() {
   closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'music') closePanel('music');
   const c = COLORS;
-  $('diarySum').innerHTML = L(`<span>⭐ 나의 별 <b>${myRipe().length}</b></span><span>띄운 등불 <b>${save.launched}</b></span><span>받은 반짝임 <b>${save.received}</b></span><span>보낸 반짝임 <b>${save.hearts}</b></span><span>별똥별 소원 <b>${save.wishes}</b></span>`, `<span>⭐ my stars <b>${myRipe().length}</b></span><span>lanterns <b>${save.launched}</b></span><span>hearts received <b>${save.received}</b></span><span>hearts sent <b>${save.hearts}</b></span><span>wishes <b>${save.wishes}</b></span>`);
+  $('diarySum').innerHTML = L(`<span>⭐ 나의 별 <b>${myRipe().length}</b></span><span>띄운 등불 <b>${save.launched}</b></span><span>받은 반짝임 <b>${save.received}</b></span><span>보낸 반짝임 <b>${save.hearts}</b></span><span>별똥별 소원 <b>${save.wishes}</b></span>${songRow()}`, `<span>⭐ my stars <b>${myRipe().length}</b></span><span>lanterns <b>${save.launched}</b></span><span>hearts received <b>${save.received}</b></span><span>hearts sent <b>${save.hearts}</b></span><span>wishes <b>${save.wishes}</b></span>${songRow()}`);
   const list = $('diaryList'); list.textContent = '';
   const items = save.log.length ? [...save.log].reverse() : [];
   if (!items.length) { const e = document.createElement('div'); e.className = 'diary-empty'; e.textContent = L('아직 띄운 등불이 없어요. 물가로 가서 첫 등불을 띄워 보세요.', 'No lanterns yet. Go to the water and launch your first one.'); list.appendChild(e); }
@@ -1886,7 +1971,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary'); if (screen === 'music') closePanel('music'); if (screen === 'lakes') closePanel('lakes'); if (screen === 'share') closePanel('share'); }
+  if (e.key === 'Escape') { $('notePanel').classList.add('hidden'); closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary'); if (screen === 'music') closePanel('music'); if (screen === 'lakes') closePanel('lakes'); if (screen === 'share') closePanel('share'); }
   else if ((e.key === 'Enter' || e.key === ' ') && screen === 'title') startGame();
 });
 
@@ -2033,6 +2118,9 @@ window.__studio.myStars = () => myStarCount;
 window.__studio.cat = () => ({ x: +cat.pos.x.toFixed(2), z: +cat.pos.z.toFixed(2), curled: cat.curled, bond: +save.catBond.toFixed(2), d: +Math.hypot(cat.pos.x - walker.pos.x, cat.pos.z - walker.pos.z).toFixed(2) });
 window.__studio.catScreen = () => { const v = new THREE.Vector3(cat.pos.x, cat.pos.y + 0.25, cat.pos.z).project(camera); return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight }; };
 window.__studio.stone = (i) => playStone(i, false);
+window.__studio.melody = () => ({ song: melody.song, spots: melody.spots.map(s => ({ x: +s.x.toFixed(2), z: +s.z.toFixed(2), i: s.i, dug: s.dug })), state: melodyState(), songK: +songK.toFixed(2), digShown });
+window.__studio.dig = () => startDig();
+window.__studio.tp = (x, z) => { walker.pos.x = x; walker.pos.z = z; };
 window.__studio.stoneK = () => stones.stones.map(s => +s.k.toFixed(2));
 window.__studio.stoneScreen = (i) => { const s = stones.stones[i]; const v = new THREE.Vector3(s.x, s.y + 0.2, s.z).project(camera); return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight }; };
 window.__studio.whale = () => { whale.start(0.3, 0.6); whaleArrives(); return true; };

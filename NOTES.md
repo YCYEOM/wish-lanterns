@@ -290,3 +290,10 @@ https://ycyeom.github.io/wish-lanterns/
 - Campfire (`src/campfire.js`, right of the start): stone ring, logs, three seat logs, flickering flame sprites,
   sparks, and the sand's spare 20th lamp slot (`beach.extraLamp`) for its glow. People sitting (🪑) within 3.2 m
   make it bigger with more sparks; crackle (`audio.setFire`) by distance; you can't walk into it; a first-time hint.
+
+## The lake's secret song (src/melody.js)
+- Each Seoul day (`seoulDay`) has a five-note song on the singing stones (`songOf(day)`: hash of the day, no stone twice running). Same song and same mounds for everyone.
+- Five glinting sand mounds (one per beach stretch, clear of the stones, fire, pier and shore lights; a corner of paper pokes out). Near one (1.5 m), on foot, the "✋ Dig in the sand" button shows: bow gesture, sand flies, the mound opens, a note rises, then the paper note card (`#notePanel`) says which stone is the k-th note. Which mound tells which note is shuffled per day.
+- Progress in `save.melody = { day, dug[5], solved }`; resets on a new day (checked every 20 s, mounds rebuilt). `save.songs` counts days found; the 📖 diary shows the song's dots.
+- Playing the song (last five hits within 6 s gaps, mine or anyone's via the 'n' note relay, tracked per sender) → stones light in order, the song's echo an octave down, the whale's distant answer, every lantern glows brighter for ~12 s. Others on the lake see "Someone found today's lake song!". Guessing without digging counts too.
+- Test hooks: `__studio.melody()`, `__studio.dig()`, `__studio.tp(x, z)`; test `.studio/dig.mjs [ko|en]`.

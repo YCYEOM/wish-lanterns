@@ -113,6 +113,9 @@ export function pierLaunchPoint(x, z) {
   return { x: LAKE.cx + ca * (r0 + d) - sa * p.s, z: LAKE.cz + sa * (r0 + d) + ca * p.s };
 }
 export const PIER_DECK = PIER.deck;
+// for placing things on the sand: near the pier (within m of it) / near a shore light (within r)
+export function nearPier(x, z, m = 1.2) { return onPier(x, z, m); }
+export function nearShoreLight(x, z, r = 1.5) { return nearLight(x, z, r); }
 // where the lamp at the pier's end stands (filled in when the pier is built)
 export const PIER_LAMP = { x: 0, z: 0 };
 export function nearestShore(x, z, d = 0.8) {

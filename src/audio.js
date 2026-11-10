@@ -260,6 +260,18 @@ export class Audio {
       o.connect(g); g.connect(this.master); if (this.echo) g.connect(this.echo); o.start(t); o.stop(t + d + 0.05);
     }
   }
+  // digging in sand: a few soft scoops of filtered noise
+  dig() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, len = Math.floor(ctx.sampleRate * 0.3), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (this.rnd() * 2 - 1) * (1 - i / len);
+    for (let k = 0; k < 4; k++) {
+      const t = ctx.currentTime + 0.25 + k * 0.27, n = ctx.createBufferSource(); n.buffer = buf;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800 + k * 300; bp.Q.value = 0.8;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+      n.connect(bp); bp.connect(g); g.connect(this.master); n.start(t); n.stop(t + 0.3);
+    }
+  }
   // the cat: a short meow (a sawtooth through two formant filters, pitch rising then falling)
   meow() {
     if (!this.ctx) return;

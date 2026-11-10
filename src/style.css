@@ -255,3 +255,24 @@ body.hud-off #netline { display: none; }
 
 .lang-btn { position: fixed; right: 16px; bottom: 16px; padding: 7px 13px; border-radius: 16px; border: 1px solid rgba(255,220,180,.3);
   background: rgba(10,14,36,.6); color: #f2dcc0; font-size: 13px; font-family: inherit; cursor: pointer; pointer-events: auto; }
+
+/* the lake's secret song: digging button, the folded note from the sand, the song's dots */
+.dig-btn { bottom: 92px; border-color: rgba(255,220,160,.55); background: rgba(48,34,18,.86); color: #fff1dc; box-shadow: 0 0 18px rgba(255,200,120,.3); }
+@media (max-width: 420px) { .dig-btn { bottom: 152px; } }
+.note-panel { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%) rotate(-1.2deg); width: min(320px, calc(100vw - 40px)); padding: 20px 22px 16px;
+  border-radius: 6px; background: linear-gradient(170deg, #f6ead0, #e8d6b0); color: #4a3826; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.55);
+  animation: noteIn .5s ease-out; z-index: 30; }
+@keyframes noteIn { from { opacity: 0; transform: translate(-50%, -30%) rotate(-6deg) scale(.8); } }
+.note-title { font-size: 13px; letter-spacing: .08em; color: #8a6a44; margin-bottom: 10px; }
+.note-text { font-size: 17px; line-height: 1.6; word-break: keep-all; }
+.note-text b { color: #6a3e14; }
+.stone-name { font-weight: 700; padding: 0 6px; border-radius: 8px; background: color-mix(in srgb, var(--c) 55%, #fff); color: #3a2a18; white-space: nowrap; }
+.note-foot { font-size: 12.5px; color: #7a6248; margin: 10px 0 12px; line-height: 1.5; word-break: keep-all; }
+.note-panel .ghost-btn { color: #5a4228; border-color: rgba(90,66,40,.35); background: rgba(255,255,255,.35); }
+.song-dots { display: inline-flex; gap: 5px; vertical-align: middle; }
+.song-dots.big { gap: 9px; margin-top: 12px; }
+.sd { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); font-style: normal; }
+.sd.q { background: rgba(0,0,0,.18); box-shadow: none; font-size: 9px; line-height: 12px; text-align: center; color: rgba(255,255,255,.6); }
+.song-dots.big .sd { width: 20px; height: 20px; line-height: 20px; font-size: 12px; }
+.song-dots.big .sd.q { color: #8a6a44; background: rgba(90,66,40,.15); }
+.song-row { flex-basis: 100%; }
