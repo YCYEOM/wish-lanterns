@@ -284,3 +284,9 @@ https://ycyeom.github.io/wish-lanterns/
   steering; waves etc. still work). Positions carry `rd` (the host's id; `net.myId` = server id / trystero
   selfId); the host's client renders the passenger in its own boat and says someone joined. 🏝 steps ashore;
   if the rower goes ashore (or leaves), the passenger is set down on the nearest shore. `.studio/ride.mjs`.
+- Launch from a boat (rower or passenger): the launch button stays afloat; the lantern is set beside the boat's
+  right side (water) or raised up (sky) with a silent lean / arms-up gesture, no kneel and no camera cut-away;
+  others see it set off beside that boat.
+- Campfire (`src/campfire.js`, right of the start): stone ring, logs, three seat logs, flickering flame sprites,
+  sparks, and the sand's spare 20th lamp slot (`beach.extraLamp`) for its glow. People sitting (🪑) within 3.2 m
+  make it bigger with more sparks; crackle (`audio.setFire`) by distance; you can't walk into it; a first-time hint.

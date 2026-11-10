@@ -349,7 +349,7 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
       else if (emo.kind === 'bow') bow = smooth(0, 0.45, t) * (1 - smooth(D - 0.7, D, t));
       else if (emo.kind === 'jump') { jump = env; hopY = t < 1.1 ? Math.sin(Math.PI * ((t % 0.55) / 0.55)) : 0; }
       // the emoji floats up and fades
-      bubble.visible = true;
+      bubble.visible = !emo.silent;
       bubble.position.y = 2.05 + Math.min(1, t / D) * 0.45 + hopY * 0.38;
       bubble.material.opacity = smooth(0, 0.2, t) * (1 - smooth(D - 0.5, D, t));
       if (t >= D) { emo = null; bubble.visible = false; }
@@ -512,13 +512,14 @@ export function createWalker(scene, shore, glowTex, opts = {}) {
     get riding() { return !!ride; },
     get row() { return { ph: rowPh, amt: rowAmt, speed: boatSpeed }; },
     // a little action: 'wave' | 'bow' | 'jump' | 'heart' (one-shot), or 'sit' (toggles; moving stands up again)
-    emote(kind) {
+    emote(kind, silent = false) {
       if (cer || ((inBoat || ride) && kind === 'sit')) return false;   // afloat everything but sitting (already seated)
       if (kind === 'sit') { sitting = !sitting; emo = null; bubble.visible = false; target = null; onArrive = null; return true; }
       if (!EMOTES[kind]) return false;
       sitting = false;
       emo = { kind, t: 0, dur: EMOTES[kind] };
       bubble.material.map = emojiTexture(EMOJI[kind]); bubble.material.needsUpdate = true;
+      emo.silent = silent;
       return true;
     },
     setSitting(on) { if (!cer && sitting !== !!on) { sitting = !!on; if (on) emo = null; } },

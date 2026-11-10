@@ -9,6 +9,7 @@ import { createCat } from './cat.js';
 import { createStones, NOTES } from './stones.js';
 import { createWhale } from './whale.js';
 import { createWake } from './wake.js';
+import { createCampfire } from './campfire.js';
 import { EN, L, setLang } from './i18n.js';
 const T_ = L;   // the same, for code where L names a lantern
 import { makeCoverDemos } from './cover-shot.js';
@@ -36,7 +37,7 @@ function loadSave() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
     return { launched: s.launched | 0, hearts: s.hearts | 0, received: s.received | 0, wishes: s.wishes | 0, hidden: s.hidden || [], hearted: s.hearted || [], mine: s.mine || [],
-      log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false, starsSeen: s.starsSeen | 0, catBond: +s.catBond || 0, catMet: !!s.catMet, stonesPlayed: !!s.stonesPlayed,
+      log: Array.isArray(s.log) ? s.log : [], heartsBy: s.heartsBy || {}, lastVisit: s.lastVisit | 0, music: s.music !== false, starsSeen: s.starsSeen | 0, catBond: +s.catBond || 0, catMet: !!s.catMet, stonesPlayed: !!s.stonesPlayed, fireHint: !!s.fireHint,
       musicCfg: { ...MUSIC_DEFAULTS, ...(s.musicCfg && typeof s.musicCfg === 'object' ? s.musicCfg : {}) } };
   } catch { return { launched: 0, hearts: 0, received: 0, wishes: 0, hidden: [], hearted: [], mine: [], log: [], heartsBy: {}, lastVisit: 0, music: true, musicCfg: { ...MUSIC_DEFAULTS } }; }
 }
@@ -973,6 +974,7 @@ function update(dt) {
   updateLanterns(dt);
   updateWhale(dt);
   updateWakes(dt);
+  updateFire(dt);
   updateSparks(dt);
   updateStar(dt);
   for (const r of others.values()) r.w.update(dt, NO_KEYS, T);
@@ -1061,7 +1063,8 @@ const netHooks = {
     let x, z, y;
     const by = fresh && peerId && others.get(peerId);
     if (by) {      // launched by someone we can see: it sets off from where their character kneels or stands
-      const at = water ? shore.nearestShore(by.w.pos.x, by.w.pos.z, -1.4) : { x: by.w.pos.x, z: by.w.pos.z };
+      const afloatBy = by.w.inBoat || by.w.riding, hy = by.w.yaw;
+      const at = afloatBy ? { x: by.w.pos.x + Math.cos(hy) * 1.35 * (water ? 1 : 0.3), z: by.w.pos.z - Math.sin(hy) * 1.35 * (water ? 1 : 0.3) } : water ? shore.nearestShore(by.w.pos.x, by.w.pos.z, -1.4) : { x: by.w.pos.x, z: by.w.pos.z };
       x = at.x; z = at.z; y = water ? 0 : 2.4;
     } else if (fresh) { // launched just now by someone on the shore: comes in from the near edge
       // somewhere along the near shore, but out over the water and never right beside you (it used to rise
@@ -1291,11 +1294,19 @@ function sendLantern() {
   const id = 'm' + Date.now().toString(36);
   const water = composeMode === 'water';
   // set it down from where the character stands: on the water at its feet, or up from its hands
-  const dir = walker.lakeDir();
-  const fromPier = water && shore.pierLaunchPoint(walker.pos.x, walker.pos.z);
-  const at = fromPier || (water ? shore.nearestShore(walker.pos.x, walker.pos.z, -1.4) : { x: walker.pos.x + dir.x * 0.7, z: walker.pos.z + dir.z * 0.7 });
+  const dir = { ...walker.lakeDir() };
+  const fromPier = water && !walker.inBoat && !walker.riding && shore.pierLaunchPoint(walker.pos.x, walker.pos.z);
+  const at = { ...(fromPier || (water ? shore.nearestShore(walker.pos.x, walker.pos.z, -1.4) : { x: walker.pos.x + dir.x * 0.7, z: walker.pos.z + dir.z * 0.7 })) };
   // the character kneels (water) or lifts it overhead (sky); the lantern sits in its hands until the release
-  const timing = walker.ceremony(composeMode);
+  const afloat = walker.inBoat || walker.riding;
+  let timing;
+  if (afloat) {                       // from a boat: lean over the side (water) or raise it up (sky); no kneel, no cut-away
+    const hy = walker.yaw, sx = Math.cos(hy), sz = -Math.sin(hy);      // the boat's right side
+    at.x = walker.pos.x + sx * 1.35; at.z = walker.pos.z + sz * 1.35;
+    dir.x = sx; dir.z = sz;
+    walker.emote(water ? 'bow' : 'heart', true);
+    timing = { release: water ? 1.3 : 1.1 };
+  } else timing = walker.ceremony(composeMode);
   const h = walker.hands(new THREE.Vector3());
   const L = makeLantern({
     id, mine: true, text, color: composeColor, mode: composeMode,
@@ -1304,7 +1315,7 @@ function sendLantern() {
   L.held = { t: 0, release: timing.release, to: { x: at.x, z: at.z },
     v: { x: dir.x * (water ? 2.2 : 0.5), z: dir.z * (water ? 2.2 : 0.5) + (water ? 0 : 0.2), y: water ? 0 : 0.7 } };
   L.grow = 0;
-  cine = { L, t: 0, mode: composeMode, dur: water ? 7.5 : 7, pos: camera.position.clone(), look: walker.camLook.clone() };
+  cine = afloat ? null : { L, t: 0, mode: composeMode, dur: water ? 7.5 : 7, pos: camera.position.clone(), look: walker.camLook.clone() };
   save.mine.push({ id, text, color: composeColor, mode: composeMode });
   save.log.push({ id, text, color: composeColor, mode: composeMode, at: Date.now(), lake: lakeNo || 0 });
   if (save.log.length > 200) save.log.shift();
@@ -1314,9 +1325,10 @@ function sendLantern() {
   board.post(net.myKey, { k: id, t: text, c: composeColor, m: composeMode });
   if (net.post) net.post({ k: id, t: text, c: composeColor, m: composeMode });
   offerShare({ text, lake: lakeNo, at: Date.now() }, water ? 3200 : 2700);
-  net.sendPos(walker.pos.x, walker.pos.z, composeMode, myScarf);   // the others see us kneel or lift it
+  if (!afloat) net.sendPos(walker.pos.x, walker.pos.z, composeMode, myScarf);   // the others see us kneel or lift it
   $('compose').classList.add('hidden'); screen = 'lake';   // the button and tip come back when the pose ends
-  $('launchBtn').classList.add('hidden'); $('tip').classList.add('hidden'); closeCard();
+  if (!afloat) { $('launchBtn').classList.add('hidden'); $('tip').classList.add('hidden'); }
+  closeCard();
   $('msg').value = ''; onMsgInput();
   setTimeout(() => audio.plop(), timing.release * 1000);
   toast(text ? T_(`「${text}」 등불이 천천히 떠나가요`, `“${text}” drifts slowly away`) : T_('등불이 조용히 떠나가요', 'Your lantern drifts quietly away'));
@@ -1535,7 +1547,7 @@ function updateBoatUI() {
   boatShown = want;
   $('boatBtn').classList.toggle('hidden', !want);
   $('boatBtn').textContent = want === 'out' ? L('🏝 내리기', '🏝 Go ashore') : want === 'ride' ? L('⛵ 같이 타기', '⛵ Ride along') : L('⛵ 배 타기', '⛵ Take the boat');
-  $('launchBtn').classList.toggle('hidden', walker.inBoat || walker.riding || walker.busy());
+  $('launchBtn').classList.toggle('hidden', walker.busy());
   document.querySelector('[data-emote=sit]').classList.toggle('hidden', walker.inBoat || walker.riding);
 }
 $('boatBtn').onclick = (e) => {
@@ -1585,6 +1597,23 @@ function updateWakes(dt) {
   boatWake(walker, dt);
   for (const o of others.values()) boatWake(o.w, dt);
   wake.update(dt);
+}
+// ---- the campfire: sit by it (🪑) and it grows; the more people sitting round it, the bigger and the more sparks
+const fire = createCampfire(scene, shore, GLOW, beach && beach.extraLamp);
+let fireHintDone = false;
+function updateFire(dt) {
+  const near = (w) => Math.hypot(w.pos.x - fire.pos.x, w.pos.z - fire.pos.z);
+  let sitters = walker.sitting && near(walker) < fire.R ? 1 : 0;
+  for (const o of others.values()) if (o.w.state().sitting && near(o.w) < fire.R) sitters++;
+  fire.update(dt, T, sitters);
+  const d = near(walker);
+  // you don't walk through it: step back out of the flames
+  if (d < 0.85 && !walker.inBoat && !walker.riding) { const k = 0.85 / Math.max(d, 1e-3); walker.pos.x = fire.pos.x + (walker.pos.x - fire.pos.x) * k; walker.pos.z = fire.pos.z + (walker.pos.z - fire.pos.z) * k; }
+  if (screen !== 'title') audio.setFire(Math.max(0, 1 - d / 16) * (0.55 + 0.45 * Math.min(1, sitters)));
+  if (!fireHintDone && !save.fireHint && screen === 'lake' && d < 7 && Date.now() > toastBusyUntil + 300) {
+    fireHintDone = true; save.fireHint = true; persist();
+    toast(L('🔥 모닥불 곁에 앉아 보세요 (😊 → 🪑) · 함께 앉으면 불이 더 커져요', '🔥 Sit by the fire (😊 → 🪑) · it grows when people sit together'), 4200);
+  }
 }
 // ---- the whale of light: on the shared clock (whale.js), so the lake sees it together
 const whale = createWhale(scene, GLOW);
@@ -2008,6 +2037,7 @@ window.__studio.stoneK = () => stones.stones.map(s => +s.k.toFixed(2));
 window.__studio.stoneScreen = (i) => { const s = stones.stones[i]; const v = new THREE.Vector3(s.x, s.y + 0.2, s.z).project(camera); return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight }; };
 window.__studio.whale = () => { whale.start(0.3, 0.6); whaleArrives(); return true; };
 window.__studio.whalePos = () => { const p = whale.pos; return { x: +p.x.toFixed(1), y: +p.y.toFixed(1), z: +p.z.toFixed(1), active: whale.active }; };
+window.__studio.fire = () => ({ x: +fire.pos.x.toFixed(2), z: +fire.pos.z.toFixed(2), d: +Math.hypot(walker.pos.x - fire.pos.x, walker.pos.z - fire.pos.z).toFixed(2) });
 window.__studio.openId = (id) => { const L = lanterns.find(l => l.id === id); if (L) openCard(L); return !!L; };
 window.__studio.heartRemote = () => { const L = lanterns.find(l => l.id.includes(':')); if (!L) return false; openCard(L); $('heartBtn').click(); return L.id; };
 for (const k of ['setCam', 'hudShow', 'launch', 'openNearest']) if (!(k in window.__studio)) window.__studio[k] = ext[k];

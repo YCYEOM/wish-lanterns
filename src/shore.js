@@ -879,6 +879,8 @@ export function buildShore(scene, uniforms, { lite = false } = {}) {
 
   return {
     mesh,
+    // the one free warm-light slot on the sand (the 20th; SHORE_LIGHTS use the rest): the campfire's glow
+    extraLamp: shoreUniforms.lamps.value[19],
     update(dt, playerPos) {
       if (playerPos) shoreUniforms.playerPos.value.copy(playerPos);
       const t = shoreUniforms.time.value;

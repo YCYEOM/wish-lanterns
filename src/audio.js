@@ -203,6 +203,33 @@ export class Audio {
     else if (kind === 'pluck') note([[1, 1, 1.1, 'triangle'], [2, 0.3, 0.45], [3, 0.1, 0.25]]);   // a soft picked string
     else if (kind === 'bass') note([[1, 1, 2.6], [2, 0.25, 1.2]]);
   }
+  // the campfire: a low rushing bed and little pops; level 0..1 (how near, how big)
+  setFire(level) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    if (!this.fire) {
+      const len = ctx.sampleRate * 3, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+      let last = 0; for (let i = 0; i < len; i++) { last = (last + 0.08 * (this.rnd() * 2 - 1)) / 1.08; d[i] = last * 3; }
+      const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 600; bp.Q.value = 0.6;
+      const gain = ctx.createGain(); gain.gain.value = 0;
+      src.connect(bp); bp.connect(gain); gain.connect(this.nature || this.master); src.start();
+      this.fire = { gain, level: 0 };
+      const pop = () => {
+        const L = this.fire.level;
+        if (L > 0.02) {
+          const t = ctx.currentTime, n = ctx.createBufferSource(); n.buffer = buf;
+          const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500 + this.rnd() * 2500;
+          const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25 * L, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04 + this.rnd() * 0.05);
+          n.connect(hp); hp.connect(g); g.connect(this.nature || this.master); n.start(t, this.rnd() * 2); n.stop(t + 0.12);
+        }
+        setTimeout(pop, 60 + this.rnd() * (L > 0.02 ? 420 : 900));
+      };
+      pop();
+    }
+    this.fire.level = level;
+    this.fire.gain.gain.setTargetAtTime(0.16 * level, ctx.currentTime, 0.3);
+  }
   // the whale's song: two low voices gliding slowly, through a soft filter and the echo
   whaleSong() {
     if (!this.ctx) return;
