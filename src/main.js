@@ -1612,7 +1612,7 @@ function updateFire(dt) {
   const d = near(walker);
   // you don't walk through it: step back out of the flames
   if (d < 0.85 && !walker.inBoat && !walker.riding) { const k = 0.85 / Math.max(d, 1e-3); walker.pos.x = fire.pos.x + (walker.pos.x - fire.pos.x) * k; walker.pos.z = fire.pos.z + (walker.pos.z - fire.pos.z) * k; }
-  if (screen !== 'title') audio.setFire(Math.max(0, 1 - d / 16) * (0.55 + 0.45 * Math.min(1, sitters)));
+  if (screen !== 'title') { audio.setFire(Math.max(0, 1 - d / 14) ** 1.3 * (0.6 + 0.4 * Math.min(1, sitters))); audio.setFireSize(Math.min(4, sitters) / 4); }
   if (!fireHintDone && !save.fireHint && screen === 'lake' && d < 7 && Date.now() > toastBusyUntil + 300) {
     fireHintDone = true; save.fireHint = true; persist();
     toast(L('🔥 모닥불 곁에 앉아 보세요 (😊 → 🪑) · 함께 앉으면 불이 더 커져요', '🔥 Sit by the fire (😊 → 🪑) · it grows when people sit together'), 4200);
