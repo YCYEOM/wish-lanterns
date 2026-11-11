@@ -1,7 +1,7 @@
 // Procedural ambience (water + crickets) and small UI sounds, all WebAudio. No files.
 
 // the player's music settings (all 0..1 except key in semitones and mood by name)
-export const MUSIC_DEFAULTS = { mood: 'calm', vol: 0.5, tempo: 0.5, notes: 0.5, key: 0, rev: 0.35, nature: 0.5 };
+export const MUSIC_DEFAULTS = { mood: 'calm', vol: 0.5, tempo: 0.5, notes: 0.5, key: 0, rev: 0.35, nature: 0.5, sfx: 0.5 };
 // moods: four chords (one per bar) and the nine-note scale the music box wanders on (an octave below where it sounds)
 export const MOODS = {
   // 🌙 calm: A minor, a soft sine pad and a music box wandering slowly — the original
@@ -42,6 +42,8 @@ export class Audio {
     this.master.gain.value = this.muted ? 0 : 0.8;
     this.master.connect(ctx.destination);
     this.nature = ctx.createGain(); this.nature.gain.value = this.cfg.nature * 2; this.nature.connect(this.master);
+    // sound effects (stones, fire, cat, whale, chimes) on their own level
+    this.sfx = ctx.createGain(); this.sfx.gain.value = this.cfg.sfx * 2; this.sfx.connect(this.master);
 
     // water: brown noise -> lowpass, slowly breathing
     const len = ctx.sampleRate * 4;
@@ -127,6 +129,7 @@ export class Audio {
   _applyCfg() {
     const t = this.ctx.currentTime, c = this.cfg;
     if (this.nature) this.nature.gain.setTargetAtTime(c.nature * 2, t, 0.15);
+    if (this.sfx) this.sfx.gain.setTargetAtTime(c.sfx * 2, t, 0.15);
     if (!this.musicGain) return;
     this.musicGain.gain.setTargetAtTime(this.musicOn ? c.vol * 2 : 0, t, this.musicOn ? 0.25 : 0.8);
     this.echoFb.gain.setTargetAtTime(0.18 + c.rev * 0.42, t, 0.2);
@@ -285,8 +288,8 @@ export class Audio {
     if (!this.ctx) return;
     const ctx = this.ctx;
     if (!this.fire) {
-      const out = ctx.createGain(); out.gain.value = 0; out.connect(this.master);
-      const big = ctx.createGain(); big.gain.value = 0; big.connect(this.master);
+      const out = ctx.createGain(); out.gain.value = 0; out.connect(this.sfx);
+      const big = ctx.createGain(); big.gain.value = 0; big.connect(this.sfx);
       const loop = (buf, dst, off) => { const s0 = ctx.createBufferSource(); s0.buffer = buf; s0.loop = true; s0.connect(dst); s0.start(0, off); };
       // two different renders (different lengths, so they never line up the same way twice)
       this._bake(this._renderFire(91, 9.3), (b1) => { loop(b1, out, 0); this._bake(this._renderFire(57, 7.1), (b2) => loop(b2, big, 2.3)); });
@@ -306,7 +309,7 @@ export class Audio {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 2;
-    const out = ctx.createGain(); out.gain.value = 0.9; lp.connect(out); out.connect(this.master); if (this.echo) out.connect(this.echo);
+    const out = ctx.createGain(); out.gain.value = 0.9; lp.connect(out); out.connect(this.sfx); if (this.echo) out.connect(this.echo);
     const call = (t0, f0, f1, f2, dur, amp) => {
       for (const [mul, a, type] of [[1, 1, 'sine'], [2, 0.25, 'triangle'], [3.01, 0.08, 'sine']]) {
         const o = ctx.createOscillator(); o.type = type;
@@ -328,7 +331,7 @@ export class Audio {
     for (const [mul, a, d] of [[1, 0.16, 1.6], [4, 0.04, 0.35], [2.76, 0.03, 0.9], [0.5, 0.05, 0.8]]) {
       const o = ctx.createOscillator(); o.frequency.value = f * mul;
       const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(a * vol, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-      o.connect(g); g.connect(this.master); if (this.echo) g.connect(this.echo); o.start(t); o.stop(t + d + 0.05);
+      o.connect(g); g.connect(this.sfx); if (this.echo) g.connect(this.echo); o.start(t); o.stop(t + d + 0.05);
     }
   }
   // digging in sand: a few soft scoops of filtered noise
@@ -340,7 +343,7 @@ export class Audio {
       const t = ctx.currentTime + 0.25 + k * 0.27, n = ctx.createBufferSource(); n.buffer = buf;
       const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800 + k * 300; bp.Q.value = 0.8;
       const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
-      n.connect(bp); bp.connect(g); g.connect(this.master); n.start(t); n.stop(t + 0.3);
+      n.connect(bp); bp.connect(g); g.connect(this.sfx); n.start(t); n.stop(t + 0.3);
     }
   }
   // the cat: a short meow (a sawtooth through two formant filters, pitch rising then falling)
@@ -356,7 +359,7 @@ export class Audio {
       bp.frequency.setValueAtTime(f * 0.8, t); bp.frequency.linearRampToValueAtTime(f * 1.15, t + 0.2);
       const gg = ctx.createGain(); gg.gain.value = g; o.connect(bp); bp.connect(gg); gg.connect(out);
     }
-    out.connect(this.master); o.start(t); o.stop(t + 0.65);
+    out.connect(this.sfx); o.start(t); o.stop(t + 0.65);
   }
   // a purr: soft low noise pulsing about 25 times a second
   purr(dur = 2.5, level = 1) {
@@ -370,7 +373,7 @@ export class Audio {
     const lfo = ctx.createOscillator(); lfo.frequency.value = 24; const lg = ctx.createGain(); lg.gain.value = 0.5; lfo.connect(lg); lg.connect(am.gain);
     const env = ctx.createGain(); env.gain.setValueAtTime(0.0001, t); env.gain.exponentialRampToValueAtTime(0.09 * level, t + 0.6);
     env.gain.setValueAtTime(0.09 * level, t + dur - 0.7); env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(lp); lp.connect(am); am.connect(env); env.connect(this.nature || this.master);
+    src.connect(lp); lp.connect(am); am.connect(env); env.connect(this.sfx || this.master);
     src.start(t); lfo.start(t); src.stop(t + dur); lfo.stop(t + dur);
   }
   setMuted(m) {
@@ -384,7 +387,7 @@ export class Audio {
     o.frequency.setValueAtTime(520, t); o.frequency.exponentialRampToValueAtTime(180, t + 0.25);
     const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
-    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.55);
+    o.connect(g); g.connect(this.sfx); o.start(t); o.stop(t + 0.55);
     this.chime([523.25, 659.25, 783.99], 0.12, 0.25);
   }
   chime(notes = [783.99, 1046.5], gap = 0.09, delay = 0) {
@@ -395,7 +398,7 @@ export class Audio {
       const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
       const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
       g.gain.exponentialRampToValueAtTime(0.09, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
-      o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 1.5);
+      o.connect(g); g.connect(this.sfx); o.start(t); o.stop(t + 1.5);
     });
   }
   tick() { this.chime([1318.5], 0, 0); }

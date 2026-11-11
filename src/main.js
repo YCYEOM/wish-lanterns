@@ -428,7 +428,7 @@ function noticeWeather() {
   weatherNoticed = true;
   applyAtmos(false);                   // rain rings spread, clouds gather, snow starts to fall, over a few seconds
   const wait = invitedLake() ? 5200 : 1600;
-  toastBusyUntil = Math.max(toastBusyUntil, Date.now() + wait + 5200);   // keep the queue clear for it
+  toastHold = Date.now() + wait + 5200; toastBusyUntil = Math.max(toastBusyUntil, toastHold);   // keep the queue clear for it
   setTimeout(() => toast(weatherLine(), 5200), wait);
 }
 
@@ -1211,14 +1211,43 @@ if (net instanceof ServerNet) { net.since = visitSince; net.scarf = myScarf; } e
 const SHOW_NETLINE = /[?&]debug\b/.test(location.search);
 if (!SHOW_NETLINE) $('netline').style.display = 'none';
 setInterval(() => { net.poll(); const d = $('netline'); if (d && SHOW_NETLINE) d.textContent = net.statusLine() + ` · board ${board.status}`; }, 250);
+// notices wait their turn instead of writing over each other: one shows; anything that comes meanwhile queues
+// and the one showing steps aside once it has been up long enough to read (about 2 s), so nothing is lost
 let toastTimer = 0;
-let toastBusyUntil = 0;
+let toastBusyUntil = 0, toastHold = 0;   // toastHold: a slot kept free for a notice that is about to come
+let toastCur = null, toastAt = 0;
+const toastQ = [];
+const TOAST_MIN = 2000;
 function toast(msg, ms = 3200) {
-  toastBusyUntil = Date.now() + ms;
-  const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
-  t.style.animation = 'none'; void t.offsetWidth; t.style.animation = '';
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), ms);
+  if (toastCur && toastCur.msg === msg) { toastCur.ms = Math.max(toastCur.ms, Date.now() - toastAt + ms); toastPump(); return; }
+  if (toastQ.some(q => q.msg === msg)) return;
+  toastQ.push({ msg, ms });
+  if (toastQ.length > 3) toastQ.shift();          // a pile-up: the oldest waiting one gives way
+  toastPump();
 }
+function toastPump() {
+  clearTimeout(toastTimer);
+  const t = $('toast'), now = Date.now();
+  if (toastCur) {
+    const until = toastAt + (toastQ.length ? Math.min(toastCur.ms, TOAST_MIN) : toastCur.ms);
+    if (now < until) { toastTimer = setTimeout(toastPump, until - now); toastBusy(now); return; }
+    toastCur = null;
+  }
+  if (!toastQ.length) { t.classList.add('hidden'); toastBusyUntil = toastHold; return; }
+  toastCur = toastQ.shift(); toastAt = now;
+  t.textContent = toastCur.msg; t.classList.remove('hidden');
+  t.style.animation = 'none'; void t.offsetWidth; t.style.animation = '';
+  toastTimer = setTimeout(toastPump, toastQ.length ? Math.min(toastCur.ms, TOAST_MIN) : toastCur.ms);
+  toastBusy(now);
+}
+// when the notices now showing and waiting will all have been read (hints that are not urgent wait for it)
+function toastBusy(now) {
+  let end = toastCur ? toastAt + toastCur.ms : now;
+  for (const q of toastQ) end += Math.min(q.ms, TOAST_MIN);
+  toastBusyUntil = Math.max(end, toastHold);
+}
+// a panel opening over the lake: put away what is showing (and what was waiting)
+function toastClear() { toastQ.length = 0; toastCur = null; clearTimeout(toastTimer); $('toast').classList.add('hidden'); toastBusyUntil = toastHold; }
 
 function startGame() {
   if (screen !== 'title') return;
@@ -1260,7 +1289,7 @@ document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => closePa
 function openCompose() {
   closeCard(); closePanel('music');
   $('topic').textContent = L(`💭 오늘의 주제 · ${topicToday()}`, `💭 Today’s topic · ${topicToday()}`);
-  $('toast').classList.add('hidden');   // the weather / arrival line never sits over the panel
+  toastClear();   // the weather / arrival line never sits over the panel
   $('compose').classList.remove('hidden');
   $('launchBtn').classList.add('hidden'); $('tip').classList.add('hidden');
   screen = 'compose';
@@ -1441,7 +1470,7 @@ function openShare(m) {
   $('shareBtn').classList.add('hidden'); closeCard();
   $('shareImg').src = c.toDataURL('image/jpeg', 0.9);
   shareBlob = null; c.toBlob((b) => { shareBlob = b; }, 'image/jpeg', 0.92);
-  $('toast').classList.add('hidden');
+  toastClear();
   $('sharePanel').classList.remove('hidden'); screen = 'share';
   audio.chime([783.99, 1046.5], 0.08);
 }
@@ -1488,7 +1517,7 @@ $('topic').onclick = () => { const m = $('msg'); if (!m.value.trim()) { m.value 
 const LAKE_TOTAL = 30;
 async function openLakes() {
   if (screen === 'compose' || screen === 'diary' || screen === 'music') return;
-  closeCard(); $('toast').classList.add('hidden');
+  closeCard(); toastClear();
   $('lakePanel').classList.remove('hidden'); screen = 'lakes';
   drawLakes(null); audio.tick();
   const d = await net.lakeCounts();
@@ -1786,10 +1815,12 @@ const SLIDERS = [
   { id: 'notes', label: L('오르골 음', 'Melody'), min: 0, max: 1, step: 0.01, show: (v) => (v < 0.08 ? L('없음', 'none') : v < 0.34 ? L('드문드문', 'sparse') : v < 0.67 ? L('보통', 'some') : L('많이', 'lots')) },
   { id: 'key', label: L('음 높이', 'Pitch'), min: -5, max: 7, step: 1, show: (v) => (v > 0 ? `+${v}` : `${v}`) },
   { id: 'rev', label: L('울림', 'Echo'), min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
-  { id: 'nature', label: L('물·풀벌레 소리', 'Water & crickets'), min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}` },
+  { id: 'nature', label: L('물·풀벌레 소리', 'Water & crickets'), min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}`, sep: L('주변 소리 · 효과음', 'Ambience & effects') },
+  { id: 'sfx', label: L('효과음', 'Effects'), min: 0, max: 1, step: 0.01, show: (v) => `${Math.round(v * 100)}`, hint: L('돌·모닥불·고양이·고래·종소리', 'stones, fire, cat, whale, chimes') },
 ];
 for (const sd of SLIDERS) {
-  const row = document.createElement('label'); row.className = 'mp-row';
+  if (sd.sep) { const h = document.createElement('div'); h.className = 'mp-sep'; h.textContent = sd.sep; $('sliders').appendChild(h); }
+  const row = document.createElement('label'); row.className = 'mp-row'; if (sd.hint) row.title = sd.hint;
   row.innerHTML = `<span class="mp-name">${sd.label}</span><input type="range" min="${sd.min}" max="${sd.max}" step="${sd.step}" data-k="${sd.id}"><span class="mp-val"></span>`;
   $('sliders').appendChild(row);
 }
@@ -1814,7 +1845,7 @@ function setMusicCfg(part) {
 audio.musicOn = save.music; audio.setMusicCfg(save.musicCfg); syncMusic();
 function openMusic() {
   closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary');
-  $('toast').classList.add('hidden'); $('musicPanel').classList.remove('hidden'); screen = 'music'; syncMusic();
+  toastClear(); $('musicPanel').classList.remove('hidden'); screen = 'music'; syncMusic();
 }
 $('music').onclick = () => { audio.start(); if (screen === 'music') closePanel('music'); else { openMusic(); audio.tick(); } };
 $('musicOn').onclick = () => {
@@ -1849,7 +1880,7 @@ function openDiary() {
     const hb = document.createElement('span'); hb.className = 'diary-heart'; const n = save.heartsBy[it.id] | 0; hb.textContent = n ? `♡ ${n}` : '';
     row.append(dot, body, hb); list.appendChild(row);
   }
-  $('toast').classList.add('hidden');
+  toastClear();
   $('diary').classList.remove('hidden'); screen = 'diary';
   audio.tick();
 }
@@ -2048,7 +2079,7 @@ const demos = makeCoverDemos({
     screen = 'lake';
     $('title').classList.add('hidden');
     $('hud').classList.remove('hidden');
-    closeCard(); $('compose').classList.add('hidden'); $('toast').classList.add('hidden');
+    closeCard(); $('compose').classList.add('hidden'); toastClear();
   },
   hud(show) { hudShow(show); },
   pose(list) {
@@ -2099,7 +2130,7 @@ window.__studio.weather = (kind, instant) => { forcedWeather = WEATHER_KINDS.inc
 window.__studio.season = (name, instant) => { forcedSeason = SEASON_NAMES.includes(name) ? name : null; applyAtmos(!!instant); return atmos.state(); };
 window.__studio.moon = (p) => { if (typeof p === 'number') uniforms.moonPhase.value = p; else uniforms.moonPhase.value = moonPhaseNow(); return { phase: +uniforms.moonPhase.value.toFixed(3), name: moonName(uniforms.moonPhase.value) }; };
 window.__studio.atmos = () => ({ ...atmos.state(), seoul: { ...seoul }, line: weatherLine() });
-window.__studio.music = () => ({ on: audio.musicOn, cfg: { ...audio.cfg }, bar: audio.bar | 0, gain: audio.musicGain ? +audio.musicGain.gain.value.toFixed(3) : null, nature: audio.nature ? +audio.nature.gain.value.toFixed(3) : null, echo: audio.echoWet ? +audio.echoWet.gain.value.toFixed(3) : null });
+window.__studio.music = () => ({ on: audio.musicOn, cfg: { ...audio.cfg }, bar: audio.bar | 0, gain: audio.musicGain ? +audio.musicGain.gain.value.toFixed(3) : null, nature: audio.nature ? +audio.nature.gain.value.toFixed(3) : null, sfx: audio.sfx ? +audio.sfx.gain.value.toFixed(3) : null, echo: audio.echoWet ? +audio.echoWet.gain.value.toFixed(3) : null });
 window.__studio.view = () => ({ ...walker.view, dir: walker.viewDir(), st: walker.state() });
 window.__studio.swatch = () => { COLORS.forEach((c, i) => { makeLantern({ id: 'sw' + i, color: c.id, mode: 'water', x: (i - 2) * 2.2, y: 0, z: 4 }); makeLantern({ id: 'sv' + i, color: c.id, mode: 'sky', x: (i - 2) * 2.2, y: 4.5, z: 2 }); });
   lanterns.filter(l => /^s[wv]/.test(l.id)).forEach(l => { l.vx = l.vz = l.vy = 0; l.speed = 0; }); return true; };
