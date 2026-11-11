@@ -9,7 +9,8 @@
 import * as THREE from '../vendor/three.module.js';
 
 export const NOTES = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66];   // C D E G A C D
-const HUES = [0xffb070, 0xffd27a, 0xfff08a, 0x9ff0b0, 0x8fd8ff, 0xb9a8ff, 0xffa8d8];
+// a rainbow, spaced wide round the colour wheel so neighbours never look alike under the warm lantern light
+export const HUES = [0xff5a5a, 0xff9a2e, 0xffe034, 0x5ee070, 0x3ad6ff, 0x5a74ff, 0xe070ff];   // red orange yellow green cyan blue purple
 
 export function createStones(scene, shore, glowTex) {
   const group = new THREE.Group(); group.userData.tag = 'singing-stones'; scene.add(group);
@@ -29,7 +30,7 @@ export function createStones(scene, shore, glowTex) {
     const g = new THREE.Group(); g.position.set(p.x, y, p.z); g.rotation.y = i * 1.3; group.add(g);
     const col = new THREE.Color(HUES[i]);
     // each stone faintly lit from within in its own colour (paler rock, a tint of the hue)
-    const rockMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(0x8a8ca0).lerp(col, 0.25), flatShading: true, emissive: col.clone().multiplyScalar(0.22) });
+    const rockMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(0x7a7c90).lerp(col, 0.5), flatShading: true, emissive: col.clone().multiplyScalar(0.3) });
     const rock = new THREE.Mesh(geo, rockMat); rock.position.y = 0.08; g.add(rock);
     const rune = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthWrite: false, fog: false }));
     rune.position.y = 0.27; g.add(rune);

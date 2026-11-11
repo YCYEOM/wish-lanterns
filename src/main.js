@@ -1697,8 +1697,8 @@ function stoneHint() {   // the first time you come near them
 }
 // ---- the lake's secret song: five glinting mounds in the sand hold a note each (one note of today's melody
 // per note); play the whole song on the singing stones and the lake answers. Same song for everyone each day.
-const STONE_NAMES = [['주황', 'amber'], ['금빛', 'gold'], ['노란', 'yellow'], ['초록', 'green'], ['하늘색', 'sky-blue'], ['보라', 'violet'], ['분홍', 'pink']];
-const STONE_CSS = ['#ffb070', '#ffd27a', '#fff08a', '#9ff0b0', '#8fd8ff', '#b9a8ff', '#ffa8d8'];
+const STONE_NAMES = [['빨간', 'red'], ['주황', 'orange'], ['노란', 'yellow'], ['초록', 'green'], ['하늘색', 'sky-blue'], ['파란', 'blue'], ['보라', 'purple']];
+const STONE_CSS = ['#ff5a5a', '#ff9a2e', '#ffe034', '#5ee070', '#3ad6ff', '#5a74ff', '#e070ff'];
 const ORD = [['첫 번째', 'first'], ['두 번째', 'second'], ['세 번째', 'third'], ['네 번째', 'fourth'], ['다섯 번째', 'fifth']];
 let melody = null, songK = 0, digSpot = null, digShown = false, digHintDone = false, melodyCheckT = 0;
 function melodyState() {
