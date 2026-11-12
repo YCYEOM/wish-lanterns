@@ -83,6 +83,8 @@ export default {
   },
 };
 
+const TOGETHER = new Set(['ask', 'yes', 'no', 'ready', 'cancel']);
+
 export class Lake extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -91,6 +93,8 @@ export class Lake extends DurableObject {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS lanterns (o TEXT, k TEXT, t TEXT, c TEXT, m TEXT, at INTEGER, hearts INTEGER DEFAULT 0, PRIMARY KEY (o, k))`);
     // indexes so a join reads only the rows it sends (rows read are what the free plan counts), and pruning
     // touches only the rows it deletes
+    // pr: the lantern it was launched together with ('owner:key'), so the pair floats joined for everyone
+    try { this.sql.exec(`ALTER TABLE lanterns ADD COLUMN pr TEXT`); } catch {}
     this.sql.exec(`CREATE INDEX IF NOT EXISTS lanterns_at ON lanterns (at)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS lanterns_hearts ON lanterns (hearts)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS hearts_at ON hearts (at)`);
@@ -124,7 +128,7 @@ export class Lake extends DurableObject {
     server.serializeAttachment(me);
 
     this.prune(now);
-    const cols = 'SELECT o, k, t AS tx, c, m, at, hearts FROM lanterns';
+    const cols = 'SELECT o, k, t AS tx, c, m, at, hearts, pr FROM lanterns';
     const latest = this.sql.exec(`${cols} ORDER BY at DESC LIMIT ?`, LATEST).toArray();
     const loved = this.sql.exec(`${cols} WHERE hearts > 0 ORDER BY hearts DESC LIMIT ?`, LOVED).toArray();
     const seen = new Set(latest.map((l) => l.o + ':' + l.k));
@@ -204,8 +208,8 @@ export class Lake extends DurableObject {
         r.l = now;
         const k = str(d.k, 40); if (!k) return;
         if (this.banned(me.o)) return;               // a blocked writer's lantern reaches only themselves
-        const l = { o: me.o, k, tx: cleanMessage(str(d.tx, 40)), c: COLORS.has(d.c) ? d.c : 'amber', m: d.m === 'sky' ? 'sky' : 'water', at: now };
-        this.sql.exec('INSERT OR REPLACE INTO lanterns (o, k, t, c, m, at) VALUES (?, ?, ?, ?, ?, ?)', l.o, l.k, l.tx, l.c, l.m, l.at);
+        const l = { o: me.o, k, tx: cleanMessage(str(d.tx, 40)), c: COLORS.has(d.c) ? d.c : 'amber', m: d.m === 'sky' ? 'sky' : 'water', at: now, pr: str(d.pr, 80) };
+        this.sql.exec('INSERT OR REPLACE INTO lanterns (o, k, t, c, m, at, pr) VALUES (?, ?, ?, ?, ?, ?, ?)', l.o, l.k, l.tx, l.c, l.m, l.at, l.pr || null);
         this.broadcast({ t: 'l', id: me.id, ...l }, ws);
         return;
       }
@@ -242,6 +246,14 @@ export class Lake extends DurableObject {
         const s = Math.floor(now / 1000); if (r.ns !== s) { r.ns = s; r.nn = 0; }
         if (++r.nn > 6 || !Number.isInteger(d.i) || d.i < 0 || d.i > 6) return;
         this.broadcast({ t: 'n', id: me.id, i: d.i }, ws);
+        return;
+      }
+      case 'tg': {                                   // launching together: ask / yes / no / ready / cancel, to one person only
+        const s = Math.floor(now / 1000); if (r.ts !== s) { r.ts = s; r.tn = 0; }
+        if (++r.tn > 4 || !TOGETHER.has(d.a)) return;
+        const to = str(d.to, 16); if (!to) return;
+        const msg = JSON.stringify({ t: 'tg', id: me.id, a: d.a, m: d.m === 'sky' ? 'sky' : 'water', pr: str(d.pr, 80) });
+        for (const o of this.ctx.getWebSockets()) { const a = o.deserializeAttachment(); if (a && a.id === to) { try { o.send(msg); } catch {} break; } }
         return;
       }
       case 'w': {                                    // a wish on a shared shooting star

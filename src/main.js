@@ -505,7 +505,7 @@ function makeLantern(opts) {
     x: opts.x, y: opts.y, z: opts.z, vx: opts.vx || 0, vz: opts.vz || 0, vy: opts.vy || 0,
     ph: rng() * 100, ph2: rng() * 100, speed: rr(0.5, 1), alpha: opts.alpha ?? 1, fadeIn: opts.fadeIn || 0,
     rot: rng() * Math.PI * 2, selected: 0, fresh: opts.fresh || 0, baseScale,
-    liked: save.hearted.includes(opts.id), halo: null, motes: null,
+    liked: save.hearted.includes(opts.id), halo: null, motes: null, pairId: localIdOf(opts.pr || ''), partner: null,
     love: loveOf((opts.hearts | 0) + (save.hearted.includes(opts.id) ? 1 : 0)),
   };
   g.rotation.y = L.rot;
@@ -513,6 +513,8 @@ function makeLantern(opts) {
   return L;
 }
 
+// a lantern's id on this screen from its id on the lake: ours are kept by key alone ('m…'), others' as 'owner:key'
+function localIdOf(netId) { if (!netId) return ''; let k = null; try { k = net.myKey ? net.myKey + ':' : null; } catch {} return k && netId.startsWith(k) ? netId.slice(k.length) : netId; }
 // how loved a lantern is, 0..1, from its hearts: 1 ♡ ≈ .27, 3 ≈ .54, 5 ≈ .7, 12+ = 1
 const loveOf = (h) => (h > 0 ? Math.min(1, Math.log2(1 + h) / Math.log2(13)) : 0);
 const HALO_COLOR = new THREE.Color(0xffe3a6);
@@ -639,7 +641,7 @@ function buildMyStars(bornNew = 0) {
   if (myStars) { scene.remove(myStars); myStars.geometry.dispose(); scene.remove(myStarLines); myStarLines.geometry.dispose(); }
   const list = myRipe().slice(-60);
   myStarCount = list.length;
-  const pos = [], size = [], col = [], born = [], seg = [];
+  const pos = [], size = [], col = [], born = [], seg = [], extra = [];
   let az = 0, el = 0, az0 = 0;
   list.forEach((e, i) => {
     const j = i % 12, g = Math.floor(i / 12);
@@ -658,7 +660,13 @@ function buildMyStars(bornNew = 0) {
     col.push(tint.r, tint.g, tint.b);
     born.push(i >= list.length - bornNew ? uniforms.time.value + 1.5 + (i - (list.length - bornNew)) * 0.6 : -100);
     if (j > 0) seg.push(...pos.slice(-6, -3), ...pos.slice(-3));
+    if (e.pr) {   // launched together: a small companion star beside it, joined by a short line
+      const p0 = pos.slice(-3), a2 = strHash(e.id, 6) * Math.PI * 2;
+      const q = [p0[0] + Math.cos(a2) * 9, p0[1] + Math.sin(a2) * 7, p0[2]];
+      extra.push({ q, p0, tint });
+    }
   });
+  for (const x of extra) { pos.push(...x.q); size.push(11); col.push(x.tint.r, x.tint.g, x.tint.b); born.push(-100); seg.push(...x.p0, ...x.q); }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('aSize', new THREE.Float32BufferAttribute(size, 1));
@@ -974,6 +982,8 @@ function update(dt) {
   if (beach) beach.update(dt, walker.pos);
   updateTapMark(dt);
   updateLanterns(dt);
+  updatePairs(dt);
+  updateTogetherUI(dt);
   updateWhale(dt);
   updateWakes(dt);
   updateFire(dt);
@@ -1021,7 +1031,7 @@ if (EN) {
     ['#title h1', 'text', 'Wish Lanterns'], ['#title p', 'text', 'Put today’s heart in a lantern and set it on the lake'], ['#title .hint', 'text', 'Tap to begin'],
     ['#stats', 'title', 'Go to another lake'], ['#lakePanel h2', 'text', 'Choose a lake'], ['#lakeSub', 'text', 'Tap a lake to go there'],
     ['#invite', 'title', 'Copy an invite link'], ['#mute', 'title', 'Sound'], ['#music', 'title', 'Music'], ['#diaryBtn', 'title', 'My lanterns'],
-    ['#boatBtn', 'text', '⛵ Take the boat'], ['#digBtn', 'text', '✋ Dig in the sand'], ['#noteOk', 'text', 'Fold it away'], ['.note-title', 'text', '📜 A note from the sand'], ['#emoteBtn', 'title', 'Actions (1-5)'],
+    ['#boatBtn', 'text', '⛵ Take the boat'], ['#togBtn', 'text', '🏮🏮 Launch together'], ['#togAskText', 'text', '🏮🏮 Someone beside you wants to launch lanterns together'], ['#togYes', 'text', 'Sure'], ['#togNo', 'text', 'Not now'], ['#togAlone', 'text', 'Launch on my own'], ['#togSoloGo', 'text', 'Launch on my own'], ['#togSoloNo', 'text', 'Never mind'], ['#digBtn', 'text', '✋ Dig in the sand'], ['#noteOk', 'text', 'Fold it away'], ['.note-title', 'text', '📜 A note from the sand'], ['#emoteBtn', 'title', 'Actions (1-5)'],
     ['[data-emote=wave]', 'html', '👋<span>Wave</span>'], ['[data-emote=bow]', 'html', '🙇<span>Bow</span>'], ['[data-emote=jump]', 'html', '🎉<span>Hop</span>'],
     ['[data-emote=heart]', 'html', '💕<span>Heart</span>'], ['[data-emote=sit]', 'html', '🪑<span>Sit</span>'],
     ['[data-emote=wave]', 'title', 'Wave (1)'], ['[data-emote=bow]', 'title', 'Bow (2)'], ['[data-emote=jump]', 'title', 'Hop (3)'], ['[data-emote=heart]', 'title', 'Heart (4)'], ['[data-emote=sit]', 'title', 'Sit (5)'],
@@ -1044,6 +1054,7 @@ const audio = new Audio();
 let screen = 'title';
 let selected = null;
 let composeColor = COLORS[0].id, composeMode = 'water';
+const composeColorNow = () => composeColor, composeModeNow = () => composeMode;
 
 let online = 0;
 let lakeNo = null;
@@ -1095,7 +1106,7 @@ const netHooks = {
     }
     makeLantern({ id: e.netId, who, text, color: e.color, mode: e.mode, x, y, z,
       vx: by ? by.w.lakeDir().x * (water ? 1.6 : 0.4) : 0, vz: by ? by.w.lakeDir().z * (water ? 1.6 : 0.4) : fresh ? (water ? -1.6 : -0.4) : 0,
-      vy: water ? 0 : 0.5, alpha: 0, fadeIn: by ? 2.6 : 2, fresh: fresh ? 5 : 0, hearts: e.hearts | 0 });
+      vy: water ? 0 : 0.5, alpha: 0, fadeIn: by ? 2.6 : 2, fresh: fresh ? 5 : 0, hearts: e.hearts | 0, pr: e.pr || '' });
     if (fresh) lanterns[lanterns.length - 1].grow = 0;   // starts small, like one just let go of
     if (fresh && screen !== 'title' && T - lastArrivalToast > 4) {
       lastArrivalToast = T;
@@ -1152,8 +1163,9 @@ const netHooks = {
   onRemove(id) { const L = lanterns.find((l) => l.id === id && !l.mine); if (L) { if (selected === L) closeCard(); removeLantern(L); } },
   onNote(id, i) { if (Number.isInteger(i) && i >= 0 && i < NOTES.length) { playStone(i, true); heardNote(id, i); } },
   onEmote(id, k) { const r = others.get(id); if (r) r.w.emote(k); },
+  onTogether(id, a, d) { togetherMsg(id, a, d || {}); },
   onWish(slot, h) { otherWish(slot, h); },
-  onLeave(id) { const r = others.get(id); if (r) { r.w.dispose(); others.delete(id); } },
+  onLeave(id) { const r = others.get(id); if (r) { r.w.dispose(); others.delete(id); } if (tog && tog.peer === id) togetherOff('left'); },
   onStatus(msg) { toast(msg, 4000); },
   onAwayHeart(netId, h) { awayHeart(netId, h); },
   // our server could not be reached: carry on serverless (direct P2P + public relays), as before it existed
@@ -1300,7 +1312,7 @@ function closePanel(which) {
   if (which === 'lakes') { $('lakePanel').classList.add('hidden'); if (screen === 'lakes') screen = 'lake'; return; }
   if (which === 'music') { $('musicPanel').classList.add('hidden'); if (screen === 'music') screen = 'lake'; return; }
   if (which === 'diary') { $('diary').classList.add('hidden'); if (screen === 'diary') screen = 'lake'; return; }
-  if (which === 'compose') { $('compose').classList.add('hidden'); $('launchBtn').classList.remove('hidden'); $('tip').classList.remove('hidden'); screen = 'lake'; }
+  if (which === 'compose') { if (tog && tog.phase === 'writing') togetherCancel(); $('compose').classList.add('hidden'); $('launchBtn').classList.remove('hidden'); $('tip').classList.remove('hidden'); screen = 'lake'; }
   else closeCard();
 }
 $('launchBtn').onclick = () => {
@@ -1319,11 +1331,13 @@ function updateLaunchLabel() {
   $('launchBtn').textContent = near ? L('🏮 여기서 등불 띄우기', '🏮 Launch a lantern here') : L('🏮 물가로 가서 등불 띄우기', '🏮 Go to the water and launch');
 }
 setInterval(updateLaunchLabel, 200);
-$('send').onclick = () => sendLantern();
+$('send').onclick = () => { if (tog) togetherReady(); else sendLantern(); };
 
-function sendLantern() {
-  const text = cleanMessage($('msg').value);
-  const id = 'm' + Date.now().toString(36);
+function sendLantern(o = {}) {
+  const text = o.text !== undefined ? o.text : cleanMessage($('msg').value);
+  const id = o.id || 'm' + Date.now().toString(36);
+  const composeColor = o.color || composeColorNow(), composeMode = o.mode || composeModeNow();
+  const pr = o.pr || '';
   const water = composeMode === 'water';
   // set it down from where the character stands: on the water at its feet, or up from its hands
   const dir = { ...walker.lakeDir() };
@@ -1341,21 +1355,21 @@ function sendLantern() {
   } else timing = walker.ceremony(composeMode);
   const h = walker.hands(new THREE.Vector3());
   const L = makeLantern({
-    id, mine: true, text, color: composeColor, mode: composeMode,
+    id, mine: true, text, color: composeColor, mode: composeMode, pr,
     x: h.x, y: h.y, z: h.z, alpha: 0, fadeIn: 0.5, fresh: 6 + timing.release,
   });
   L.held = { t: 0, release: timing.release, to: { x: at.x, z: at.z },
     v: { x: dir.x * (water ? 2.2 : 0.5), z: dir.z * (water ? 2.2 : 0.5) + (water ? 0 : 0.2), y: water ? 0 : 0.7 } };
   L.grow = 0;
   cine = afloat ? null : { L, t: 0, mode: composeMode, dur: water ? 7.5 : 7, pos: camera.position.clone(), look: walker.camLook.clone() };
-  save.mine.push({ id, text, color: composeColor, mode: composeMode });
-  save.log.push({ id, text, color: composeColor, mode: composeMode, at: Date.now(), lake: lakeNo || 0 });
+  save.mine.push({ id, text, color: composeColor, mode: composeMode, ...(pr ? { pr } : {}) });
+  save.log.push({ id, text, color: composeColor, mode: composeMode, at: Date.now(), lake: lakeNo || 0, ...(pr ? { pr } : {}) });
   if (save.log.length > 200) save.log.shift();
   if (save.mine.length > 12) save.mine.shift();
   save.launched++;
   persist(); updateStats(); net.setMine(save.mine);
-  board.post(net.myKey, { k: id, t: text, c: composeColor, m: composeMode });
-  if (net.post) net.post({ k: id, t: text, c: composeColor, m: composeMode });
+  board.post(net.myKey, { k: id, t: text, c: composeColor, m: composeMode, pr });
+  if (net.post) net.post({ k: id, t: text, c: composeColor, m: composeMode, pr });
   offerShare({ text, lake: lakeNo, at: Date.now() }, water ? 3200 : 2700);
   if (!afloat) net.sendPos(walker.pos.x, walker.pos.z, composeMode, myScarf);   // the others see us kneel or lift it
   $('compose').classList.add('hidden'); screen = 'lake';   // the button and tip come back when the pose ends
@@ -1363,7 +1377,8 @@ function sendLantern() {
   closeCard();
   $('msg').value = ''; onMsgInput();
   setTimeout(() => audio.plop(), timing.release * 1000);
-  toast(text ? T_(`「${text}」 등불이 천천히 떠나가요`, `“${text}” drifts slowly away`) : T_('등불이 조용히 떠나가요', 'Your lantern drifts quietly away'));
+  if (pr) toast(T_('🏮🏮 함께 띄운 등불이 나란히 떠나가요', '🏮🏮 Your lanterns drift off side by side'));
+  else toast(text ? T_(`「${text}」 등불이 천천히 떠나가요`, `“${text}” drifts slowly away`) : T_('등불이 조용히 떠나가요', 'Your lantern drifts quietly away'));
   return L;
 }
 
@@ -1373,6 +1388,10 @@ function openCard(L) {
   selected = L; L.selected = 1;
   $('cardWho').textContent = L.mine ? T_('내가 띄운 등불', 'Your lantern') : L.who ? T_(`${L.who}님의 등불`, `${L.who}’s lantern`) : T_('누군가의 등불', 'Someone’s lantern');
   if (L.hearts + (L.liked ? 1 : 0) >= 5) $('cardWho').textContent += T_(' · ✨ 많은 마음이 닿은 등불', ' · ✨ loved by many');
+  const P = pairOf(L);
+  if (P) $('cardWho').textContent += T_(' · 🤝 함께 띄운 등불', ' · 🤝 launched together');
+  $('cardPair').classList.toggle('hidden', !P);
+  if (P) $('cardPair').textContent = P.text ? T_(`나란히 떠가는 등불: 「${P.text}」`, `Its companion: “${P.text}”`) : T_('나란히 떠가는 등불이 함께해요', 'Its companion floats beside it');
   const m = $('cardMsg');
   if (L.text) { m.textContent = L.text; m.style.fontStyle = 'normal'; m.style.opacity = 1; }
   else { m.textContent = T_('말없이 띄운 등불이에요\n그 마음도 닿기를', 'A lantern sent without words\nmay its heart reach you'); m.style.whiteSpace = 'pre-line'; m.style.opacity = 0.75; }
@@ -1405,6 +1424,7 @@ $('heartBtn').onclick = () => {
     save.hearted.push(selected.id); save.hearts++; selected.liked = true;
     persist(); updateStats(); refreshHeart();
     burst(selected); audio.chime([783.99, 987.77, 1174.66]);
+    const P = pairOf(selected); if (P) burst(P);   // launched together: both light up
     const hid = selected.mine ? net.netIdFor(selected.id) || selected.id : selected.id;
     const h = net.myKey + Date.now().toString(36);
     heartSeen.add(h);
@@ -1776,6 +1796,177 @@ function updateMelody(dt) {
     if (s) { digHintDone = true; if (!save.digHint) { save.digHint = true; persist(); } toast(save.songs || melodyState().dug.some(Boolean) ? L('✨ 모래 속에 반짝이는 게 있어요', '✨ Something glints in the sand') : L('✨ 모래 속에 무언가 반짝여요 · 가까이 가서 파 보세요', '✨ Something glints in the sand · go close and dig'), 3600); }
   }
 }
+// ---- launching together: two people side by side write a lantern each and let them go on the same count;
+// the pair floats joined by a thread of light (kept on the server, so everyone sees them joined)
+let tog = null;   // { peer, role: 'host' | 'guest', phase: 'asking' | 'writing' | 'waiting' | 'count', mode, id, mine, theirPr, t }
+let togShown = false, togAskFrom = '', togAskT = 0;
+const TOG_NEAR = 3.2;
+function togetherCandidate() {
+  if (tog || screen !== 'lake' || walker.busy() || walker.inBoat) return '';
+  let best = '', bd = TOG_NEAR;
+  for (const [id, o] of others) {
+    const w = o.w;
+    // both on the sand, or the two of you in one boat (only the passenger is offered it: the rower is rowing)
+    const ok = (!walker.riding && !w.inBoat && !w.riding) || (walker.riding && rideHostId === id);
+    if (!ok) continue;
+    const d = Math.hypot(w.pos.x - walker.pos.x, w.pos.z - walker.pos.z);
+    if (d < bd) { bd = d; best = id; }
+  }
+  return best;
+}
+function updateTogetherUI(dt) {
+  const want = !!togetherCandidate();
+  if (want !== togShown) { togShown = want; $('togBtn').classList.toggle('hidden', !want); }
+  if (togAskFrom && (togAskT -= dt) < 0) togetherAnswer(false);
+  if (tog && tog.phase === 'asking' && Date.now() - tog.t > 20000) { togetherOff(''); toast(L('대답이 없네요 · 다음에 함께해요', 'No answer this time · maybe later'), 2600); }
+  if (tog && tog.phase === 'waiting' && Date.now() - tog.t > 90000) togetherOff('timeout');
+}
+$('togBtn').onclick = (e) => {
+  e.stopPropagation(); audio.start();
+  const peer = togetherCandidate(); if (!peer) return;
+  tog = { peer, role: 'host', phase: 'asking', t: Date.now(), mode: 'water', theirPr: '' };
+  net.sendTogether && net.sendTogether(peer, 'ask');
+  togShown = false; $('togBtn').classList.add('hidden');
+  toast(L('🏮🏮 함께 띄우자고 했어요 · 대답을 기다려요', '🏮🏮 You asked them to launch together · waiting for an answer'), 3000);
+};
+function togetherMsg(id, a, d) {
+  if (a === 'ask') {
+    if (tog || togAskFrom || screen === 'compose' || walker.busy()) { net.sendTogether(id, 'no'); return; }
+    togAskFrom = id; togAskT = 20;
+    $('togAsk').classList.remove('hidden'); audio.chime([659.25, 783.99, 987.77], 0.1);
+    return;
+  }
+  if (!tog || tog.peer !== id) { if (a === 'cancel' && togAskFrom === id) { togAskFrom = ''; $('togAsk').classList.add('hidden'); } return; }
+  if (a === 'yes' && tog.phase === 'asking') { tog.phase = 'writing'; tog.t = Date.now(); togetherCompose(); }
+  else if (a === 'no' && tog.phase === 'asking') { tog = null; toast(L('지금은 어렵대요 · 다음에 함께해요 🙂', 'Not right now · maybe next time 🙂'), 2600); }
+  else if (a === 'ready') { tog.theirPr = d.pr || ''; if (tog.role === 'guest') tog.mode = d.m === 'sky' ? 'sky' : 'water'; if (tog.phase === 'waiting') togetherGo(); else togBarText(); }
+  else if (a === 'cancel') togetherOff('cancel');
+}
+function togetherAnswer(yes) {
+  const id = togAskFrom; togAskFrom = ''; $('togAsk').classList.add('hidden');
+  if (!id) return;
+  net.sendTogether(id, yes ? 'yes' : 'no');
+  if (!yes) return;
+  audio.start(); tog = { peer: id, role: 'guest', phase: 'writing', t: Date.now(), mode: 'water', theirPr: '' };
+  togetherCompose();
+}
+$('togYes').onclick = (e) => { e.stopPropagation(); togetherAnswer(true); };
+$('togNo').onclick = (e) => { e.stopPropagation(); togetherAnswer(false); };
+// the compose panel, for a lantern launched together: the asker picks water or sky, the other follows
+function togetherCompose() {
+  openCompose();
+  $('compose').classList.add('together'); $('compose').classList.toggle('guest', tog.role === 'guest');
+  $('compose').querySelector('h2').textContent = L('함께 띄우는 등불', 'Launching together');
+  $('send').textContent = L('준비됐어요', 'I’m ready');
+  $('togNote').classList.toggle('hidden', tog.role !== 'guest');
+  $('togNote').textContent = L('물 위로 띄울지 하늘로 띄울지는 함께 띄우자고 한 사람이 정해요', 'The one who asked chooses water or sky');
+  toast(L('🏮🏮 각자 한마디를 적고 준비되면 함께 띄워요', '🏮🏮 Write your own words · they go together when you’re both ready'), 3200);
+}
+function composeSolo() {
+  $('compose').classList.remove('together', 'guest');
+  $('compose').querySelector('h2').textContent = L('나의 등불', 'My lantern');
+  $('send').textContent = L('띄우기', 'Launch');
+  $('togNote').classList.add('hidden');
+}
+function togetherReady() {
+  if (!tog || tog.phase !== 'writing') return;
+  tog.id = 'm' + Date.now().toString(36);
+  tog.mine = { text: cleanMessage($('msg').value), color: composeColor, mode: tog.role === 'host' ? composeMode : tog.mode };
+  if (tog.role === 'host') tog.mode = composeMode;
+  tog.phase = 'waiting'; tog.t = Date.now();
+  net.sendTogether(tog.peer, 'ready', { pr: net.netIdFor(tog.id), m: tog.mode });
+  $('compose').classList.add('hidden'); composeSolo(); screen = 'lake';
+  $('msg').value = ''; onMsgInput();
+  audio.tick();
+  if (tog.theirPr) togetherGo(); else { $('togBar').classList.remove('hidden'); togBarText(); }
+}
+function togBarText() {
+  if (!tog) return;
+  $('togBarText').textContent = tog.phase === 'waiting' ? L('🏮 함께하는 사람을 기다리는 중…', '🏮 Waiting for the other one…') : L('🏮 상대는 준비됐어요 · 한마디를 적어 주세요', '🏮 They’re ready · write yours');
+}
+// both ready: 3 · 2 · 1, then each lets their own go, joined to the other's
+function togetherGo() {
+  const t = tog; t.phase = 'count'; $('togBar').classList.add('hidden');
+  const c = $('togCount'); let n = 3;
+  const tick = () => {
+    if (tog !== t) { c.classList.add('hidden'); return; }
+    if (n === 0) {
+      c.classList.add('hidden'); tog = null;
+      sendLantern({ ...t.mine, mode: t.mode, id: t.id, pr: t.theirPr });
+      save.together = (save.together | 0) + 1; persist();
+      return;
+    }
+    c.textContent = String(n); c.classList.remove('hidden'); c.style.animation = 'none'; void c.offsetWidth; c.style.animation = '';
+    audio.chime([n === 1 ? 1046.5 : 783.99], 0); n--; setTimeout(tick, 850);
+  };
+  tick();
+}
+function togetherCancel() { if (!tog) return; net.sendTogether(tog.peer, 'cancel'); tog = null; composeSolo(); $('togBar').classList.add('hidden'); }
+// the other one went away or stopped: whatever you wrote can still go on its own
+function togetherOff(why) {
+  const t = tog; tog = null;
+  $('togBar').classList.add('hidden'); $('togCount').classList.add('hidden');
+  if (!t) return;
+  if (why === '') return;
+  const msg = why === 'left' ? L('함께하던 사람이 호수를 떠났어요', 'The other one left the lake') : why === 'timeout' ? L('함께하던 사람이 오지 않네요', 'The other one didn’t come') : L('함께하던 사람이 그만뒀어요', 'The other one stopped');
+  if (t.phase === 'writing' && screen === 'compose') { composeSolo(); toast(msg + L(' · 혼자 띄울 수 있어요', ' · you can launch it on your own'), 3400); return; }
+  if (t.mine) { togSolo = t; $('togSoloBar').classList.remove('hidden'); $('togSoloText').textContent = msg; return; }
+  toast(msg, 2800);
+}
+let togSolo = null;
+$('togSoloGo').onclick = (e) => { e.stopPropagation(); const t = togSolo; togSolo = null; $('togSoloBar').classList.add('hidden'); if (t) sendLantern({ ...t.mine, id: t.id }); };
+$('togSoloNo').onclick = (e) => { e.stopPropagation(); togSolo = null; $('togSoloBar').classList.add('hidden'); };
+$('togAlone').onclick = (e) => { e.stopPropagation(); if (!tog || !tog.mine) return; const t = tog; net.sendTogether(t.peer, 'cancel'); tog = null; $('togBar').classList.add('hidden'); sendLantern({ ...t.mine, id: t.id }); };
+
+// the pairs on the lake: a thread of light between them, and they keep to each other as they drift
+const pairThreads = new Map();   // lead lantern -> { line, beads }
+const THREAD_N = 14;
+const threadMat = new THREE.LineBasicMaterial({ color: 0xffe6b4, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+let pairScanT = 0;
+function pairOf(L) { return L && L.partner && lanterns.includes(L.partner) ? L.partner : null; }
+function updatePairs(dt) {
+  if ((pairScanT -= dt) < 0) {          // find partners now and then (they may arrive later than their pair)
+    pairScanT = 1;
+    for (const L of lanterns) {
+      if (!L.pairId) continue;
+      if (L.partner && lanterns.includes(L.partner)) continue;
+      const P = lanterns.find(o => o.id === L.pairId) || null;
+      L.partner = P; if (P && !P.partner) P.partner = L;
+    }
+  }
+  const seen = new Set();
+  for (const L of lanterns) {
+    const P = pairOf(L); if (!P || seen.has(P)) continue; seen.add(L);
+    if (L.held || P.held) { const th = pairThreads.get(L); if (th) th.line.visible = false; continue; }
+    // keep together: a soft spring toward a couple of metres apart
+    const dx = P.x - L.x, dz = P.z - L.z, dy = L.mode === 'sky' && P.mode === 'sky' ? P.y - L.y : 0;
+    const d = Math.hypot(dx, dz, dy) || 1, rest = L.mode === 'sky' ? 3.6 : 3.2, k = Math.min(1, dt * 0.8) * (d - rest) / d * 0.5;
+    L.x += dx * k; L.z += dz * k; P.x -= dx * k; P.z -= dz * k;
+    if (dy) { L.y += dy * k; P.y -= dy * k; }
+    let th = pairThreads.get(L);
+    if (!th) {
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(THREAD_N * 3), 3));
+      const line = new THREE.Line(g, threadMat.clone()); line.frustumCulled = false; scene.add(line);
+      const beads = [0, 1].map(() => { const b = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xfff0c8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); b.scale.setScalar(0.55); scene.add(b); return b; });
+      // a string of small soft lights along it, so the thread reads from afar too
+      const dots = []; for (let i = 0; i < 9; i++) { const d2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xffe0a0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); d2.scale.setScalar(0.32); scene.add(d2); dots.push(d2); }
+      th = { line, beads, dots }; pairThreads.set(L, th);
+    }
+    // a gentle sag between the two lanterns' middles
+    const a = L.group.position, b = P.group.position, ha = L.mode === 'water' ? 0.75 : 0.9, arr = th.line.geometry.attributes.position.array;
+    const sag = 0.25 + 0.05 * Math.sin(T * 1.3 + L.ph);
+    const pt = (u, out) => { out.x = a.x + (b.x - a.x) * u; out.z = a.z + (b.z - a.z) * u; out.y = a.y + ha + (b.y - a.y) * u - sag * 4 * u * (1 - u); return out; };
+    const v = new THREE.Vector3();
+    for (let i = 0; i < THREAD_N; i++) { pt(i / (THREAD_N - 1), v); arr[i * 3] = v.x; arr[i * 3 + 1] = v.y; arr[i * 3 + 2] = v.z; }
+    th.line.geometry.attributes.position.needsUpdate = true;
+    const vis = Math.min(L.alpha, P.alpha) * Math.min(1, (L.grow ?? 1), (P.grow ?? 1));
+    th.line.visible = vis > 0.02; th.line.material.opacity = 0.85 * vis * (0.8 + 0.2 * Math.sin(T * 2 + L.ph));
+    th.dots.forEach((dd, i) => { const u = (i + 1) / (th.dots.length + 1); pt(u, dd.position); dd.material.opacity = vis * (0.45 + 0.25 * Math.sin(T * 2.4 - i * 0.7 + L.ph)); });
+    th.beads.forEach((bd, i) => { const u = ((T * 0.18 + i * 0.5 + L.ph) % 1); pt(u, bd.position); bd.material.opacity = 0.85 * vis * Math.sin(u * Math.PI); });
+  }
+  // threads whose pair is gone
+  for (const [L, th] of pairThreads) if (!lanterns.includes(L) || !pairOf(L)) { scene.remove(th.line); th.line.geometry.dispose(); th.beads.forEach(b => scene.remove(b)); th.dots.forEach(b => scene.remove(b)); pairThreads.delete(L); }
+}
 // ---- the lakeside cat: keeps you company; bond grows with minutes spent near it (saved)
 const cat = createCat(scene, shore, { bond: save.catBond });
 let catSaveT = 0, purrT = 0;
@@ -1875,7 +2066,7 @@ function openDiary() {
     const body = document.createElement('div'); body.className = 'diary-text';
     body.textContent = it.text ? (EN ? `“${it.text}”` : `「${it.text}」`) : L('말없이 띄운 등불', 'A lantern without words');
     const meta = document.createElement('div'); meta.className = 'diary-meta';
-    meta.textContent = `${it.at ? dateKST(it.at) + L(' 밤', ' night') : ''}${it.lake ? L(` · 호수 ${it.lake}`, ` · lake ${it.lake}`) : ''} · ${it.mode === 'sky' ? L('하늘로', 'to the sky') : L('물 위로', 'on the water')} · ${ripe(it) ? L('⭐ 별이 되었어요', '⭐ now a star') : L('내일 별이 돼요', 'a star tomorrow')}`;
+    meta.textContent = `${it.at ? dateKST(it.at) + L(' 밤', ' night') : ''}${it.lake ? L(` · 호수 ${it.lake}`, ` · lake ${it.lake}`) : ''} · ${it.mode === 'sky' ? L('하늘로', 'to the sky') : L('물 위로', 'on the water')} · ${ripe(it) ? L('⭐ 별이 되었어요', '⭐ now a star') : L('내일 별이 돼요', 'a star tomorrow')}${it.pr ? L(' · 🤝 함께 띄웠어요', ' · 🤝 launched together') : ''}`;
     body.appendChild(meta);
     const hb = document.createElement('span'); hb.className = 'diary-heart'; const n = save.heartsBy[it.id] | 0; hb.textContent = n ? `♡ ${n}` : '';
     row.append(dot, body, hb); list.appendChild(row);
@@ -2160,6 +2351,7 @@ window.__studio.catScreen = () => { const v = new THREE.Vector3(cat.pos.x, cat.p
 window.__studio.stone = (i) => playStone(i, false);
 window.__studio.melody = () => ({ song: melody.song, spots: melody.spots.map(s => ({ x: +s.x.toFixed(2), z: +s.z.toFixed(2), i: s.i, dug: s.dug })), state: melodyState(), songK: +songK.toFixed(2), digShown });
 window.__studio.dig = () => startDig();
+window.__studio.tog = () => ({ tog: tog && { peer: tog.peer, role: tog.role, phase: tog.phase, mode: tog.mode, theirPr: tog.theirPr }, btn: togShown, ask: togAskFrom, pairs: lanterns.filter(l => pairOf(l)).map(l => ({ id: l.id, mine: l.mine, p: l.partner.id, d: +Math.hypot(l.x - l.partner.x, l.z - l.partner.z).toFixed(2), x: +l.x.toFixed(1), y: +l.y.toFixed(1), z: +l.z.toFixed(1), mode: l.mode })) });
 window.__studio.tp = (x, z) => { walker.pos.x = x; walker.pos.z = z; };
 window.__studio.stoneK = () => stones.stones.map(s => +s.k.toFixed(2));
 window.__studio.stoneScreen = (i) => { const s = stones.stones[i]; const v = new THREE.Vector3(s.x, s.y + 0.2, s.z).project(camera); return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight }; };

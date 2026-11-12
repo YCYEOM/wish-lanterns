@@ -278,3 +278,19 @@ body.hud-off #netline { display: none; }
 .song-dots.big .sd.q { color: #8a6a44; background: rgba(90,66,40,.15); }
 .song-row { flex-basis: 100%; }
 .mp-sep { font-size: 11.5px; letter-spacing: .04em; color: #c9ab86; margin: 10px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255,210,160,.14); }
+
+/* launching together */
+.tog-btn { bottom: 148px; border-color: rgba(255,210,150,.6); background: rgba(60,36,14,.86); color: #fff1dc; box-shadow: 0 0 18px rgba(255,190,110,.35); }
+@media (max-width: 420px) { .tog-btn { bottom: 204px; } }
+.tog-bar { position: absolute; left: 50%; top: 74px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 9px 10px 9px 16px; border-radius: 24px;
+  background: rgba(30,20,12,.88); border: 1px solid rgba(255,210,160,.35); color: #fff1dc; font-size: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.4); z-index: 20; max-width: calc(100vw - 24px); }
+.tog-bar span { word-break: keep-all; }
+.tog-bar button { flex: none; padding: 7px 13px; border-radius: 16px; font-family: inherit; font-size: 13.5px; cursor: pointer; border: 1px solid rgba(255,210,160,.35); }
+.tog-yes { background: #ffb36b; color: #3a200a; border-color: #ffb36b; font-weight: 700; }
+.tog-no { background: transparent; color: #f0d7b4; }
+.tog-count { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); font-size: 96px; font-weight: 800; color: #ffe2b0;
+  text-shadow: 0 0 30px rgba(255,180,90,.9); pointer-events: none; animation: togPop .85s ease-out; z-index: 25; }
+@keyframes togPop { from { opacity: 0; transform: translate(-50%, -50%) scale(1.6); } 30% { opacity: 1; } to { opacity: .2; transform: translate(-50%, -50%) scale(.9); } }
+#compose.guest .modes, #compose.guest .label.where { display: none; }
+.tog-note { font-size: 12.5px; color: #e8c9a0; margin: 2px 0 8px; line-height: 1.5; word-break: keep-all; }
+.card-pair { font-size: 13px; color: #ffd9a6; margin: 6px 0 2px; text-align: center; word-break: keep-all; }

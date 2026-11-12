@@ -92,7 +92,7 @@ export class ServerNet {
     for (const p of d.peers || []) { this.ids.add(p.id); this.hooks.onPos && this.hooks.onPos(p.id, { x: p.x, z: p.z, cer: null, s: p.s | 0, sit: !!p.sit, b: !!p.b, rd: p.rd || '' }); }
     for (const l of (d.lanterns || []).slice().reverse()) {
       if (!l || l.o === this.owner) continue;
-      this.hooks.onLantern({ netId: `${l.o}:${l.k}`, text: l.tx || '', color: l.c, mode: l.m === 'sky' ? 'sky' : 'water', hearts: l.hearts | 0 }, '', false);
+      this.hooks.onLantern({ netId: `${l.o}:${l.k}`, text: l.tx || '', color: l.c, mode: l.m === 'sky' ? 'sky' : 'water', hearts: l.hearts | 0, pr: l.pr || '' }, '', false);
     }
     for (const a of d.away || []) this.hooks.onAwayHeart && this.hooks.onAwayHeart(a.id, a.h);
   }
@@ -115,18 +115,21 @@ export class ServerNet {
         break;
       case 'l':
         if (typeof d.o !== 'string' || typeof d.k !== 'string' || d.o === this.owner) return;
-        this.hooks.onLantern({ netId: `${d.o}:${d.k}`, text: d.tx || '', color: d.c, mode: d.m === 'sky' ? 'sky' : 'water' }, '', true, d.id);
+        this.hooks.onLantern({ netId: `${d.o}:${d.k}`, text: d.tx || '', color: d.c, mode: d.m === 'sky' ? 'sky' : 'water', pr: typeof d.pr === 'string' ? d.pr : '' }, '', true, d.id);
         break;
       case 'h': if (typeof d.id === 'string') this.hooks.onHeart(d.id, typeof d.h === 'string' ? d.h : null); break;
       case 'n': if (Number.isInteger(d.i)) this.hooks.onNote && this.hooks.onNote(d.id, d.i); break;
       case 'rm': if (typeof d.id === 'string') this.hooks.onRemove && this.hooks.onRemove(d.id); break;
       case 'e': if (typeof d.id === 'string' && typeof d.k === 'string') this.hooks.onEmote && this.hooks.onEmote(d.id, d.k); break;
+      case 'tg': if (typeof d.id === 'string' && typeof d.a === 'string') this.hooks.onTogether && this.hooks.onTogether(d.id, d.a, { m: d.m, pr: typeof d.pr === 'string' ? d.pr : '' }); break;
       case 'w': if (Number.isFinite(d.s) && typeof d.h === 'string') this.hooks.onWish && this.hooks.onWish(d.s, d.h); break;
     }
   }
 
   send(o) { if (this.ws && this.ws.readyState === 1) { try { this.ws.send(JSON.stringify(o)); } catch {} } }
-  post(l) { this.send({ t: 'l', k: l.k, tx: l.t || '', c: l.c, m: l.m }); }
+  post(l) { this.send({ t: 'l', k: l.k, tx: l.t || '', c: l.c, m: l.m, pr: l.pr || '' }); }
+  // launching together, to one person: a = ask | yes | no | ready | cancel
+  sendTogether(to, a, extra = {}) { this.send({ t: 'tg', to, a, m: extra.m, pr: extra.pr }); }
   sendHeart(netId, h) { this.send({ t: 'h', id: netId, h }); }        // kept for an owner who is away, so sent even when alone
   sendWish(slot, h) { if (this.n > 1) this.send({ t: 'w', s: slot, h }); }
   poll() {}

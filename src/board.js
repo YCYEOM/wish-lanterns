@@ -111,7 +111,7 @@ export class Board {
     if (!d || typeof d.o !== 'string' || d.o.length > 40 || typeof d.k !== 'string' || d.k.length > 40) return;
     const fresh = ev.created_at >= this.joinedAt - 5;           // launched while we are here: it comes in from the shore
     this.hooks.onLantern({ netId: `${d.o}:${d.k}`, text: typeof d.t === 'string' ? d.t.slice(0, 40) : '',
-      color: typeof d.c === 'string' ? d.c : 'amber', mode: d.m === 'sky' ? 'sky' : 'water' }, fresh);
+      color: typeof d.c === 'string' ? d.c : 'amber', mode: d.m === 'sky' ? 'sky' : 'water', pr: typeof d.pr === 'string' ? d.pr.slice(0, 80) : '' }, fresh);
   }
 
   async publish(ev) {
@@ -128,7 +128,7 @@ export class Board {
     try {
       const ev = await this.sign(KIND_LANTERN,
         [['d', `wl:${owner}:${l.k}`], ['t', TAG(this.lake)], ['expiration', String(now() + TTL)]],
-        JSON.stringify({ o: owner, k: l.k, t: l.t || '', c: l.c, m: l.m }));
+        JSON.stringify({ o: owner, k: l.k, t: l.t || '', c: l.c, m: l.m, pr: l.pr || '' }));
       this.publish(ev);
     } catch {}
   }

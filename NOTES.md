@@ -297,3 +297,10 @@ https://ycyeom.github.io/wish-lanterns/
 - Progress in `save.melody = { day, dug[5], solved }`; resets on a new day (checked every 20 s, mounds rebuilt). `save.songs` counts days found; the 📖 diary shows the song's dots.
 - Playing the song (last five hits within 6 s gaps, mine or anyone's via the 'n' note relay, tracked per sender) → stones light in order, the song's echo an octave down, the whale's distant answer, every lantern glows brighter for ~12 s. Others on the lake see "Someone found today's lake song!". Guessing without digging counts too.
 - Test hooks: `__studio.melody()`, `__studio.dig()`, `__studio.tp(x, z)`; test `.studio/dig.mjs [ko|en]`.
+
+## Launching together
+- Within 3.2 m of someone (both on the sand, or the passenger in that person's boat) the "🏮🏮 Launch together" pill shows (left, above dig/boat). Ask → the other gets a bar (Sure / Not now, 20 s). Both write in the compose panel ("together" mode; the asker picks water/sky, the guest's mode buttons are hidden). "I'm ready" closes it and sends `ready` with the lantern's net id; when both are ready a 3·2·1 count runs and each launches their own with `pr` = the partner's net id.
+- Messages: server `{t:'tg', to, a: ask|yes|no|ready|cancel, m, pr}` relayed to one socket only (≤4/s); P2P action 'together' with target. Lanterns carry `pr` everywhere (server column `pr`, welcome list, 'l' broadcast, P2P mine list, Nostr board).
+- A pair floats joined: soft spring to 3.2 m (water) / 3.6 m (sky), a sagging line with nine small lights and two beads running along it (updatePairs). Card shows "🤝 launched together" and the companion's words; a heart bursts on both. Diary meta says so; the constellation adds a small companion star with a short line.
+- If the other stops/leaves/times out (90 s): while writing, the panel turns back to a solo lantern; if you were already ready, a bar offers "Launch on my own".
+- Tests: `.studio/together.mjs`, `together2.mjs` (thread photo, card, diary), `together3.mjs` (cancel / leave) — need `wrangler dev` on :8787.

@@ -49,7 +49,7 @@ export class Net {
   netIdFor(k) { return `${this.owner}:${k}`; }
 
   setMine(list) {
-    this.mine = list.slice(-6).map(l => ({ k: l.id, t: l.text || '', c: l.color, m: l.mode }));
+    this.mine = list.slice(-6).map(l => ({ k: l.id, t: l.text || '', c: l.color, m: l.mode, pr: l.pr || '' }));
     if (this.sendLanterns && this.peers > 0) {
       try { this.sendLanterns.send({ o: this.owner, l: this.mine }); } catch (e) { this.lastError = String(e && e.message || e).slice(0, 80); }
     }
@@ -109,6 +109,12 @@ export class Net {
         if (room !== this.room || !id || !d || typeof d.k !== 'string' || d.k.length > 10) return;
         this.hooks.onEmote && this.hooks.onEmote(id, d.k);
       };
+      this.sendTogetherAction = room.makeAction('together');
+      this.sendTogetherAction.onMessage = (d, meta) => {
+        const id = meta && meta.peerId;
+        if (room !== this.room || !id || !d || typeof d.a !== 'string' || d.to !== this.selfId) return;
+        this.hooks.onTogether && this.hooks.onTogether(id, d.a, { m: d.m === 'sky' ? 'sky' : 'water', pr: typeof d.pr === 'string' ? d.pr.slice(0, 80) : '' });
+      };
       this.sendLanterns.onMessage = (data, meta) => { if (room === this.room) this.receiveLanterns(data, meta && meta.peerId); };
       this.sendHeartAction.onMessage = (data) => {
         if (room !== this.room || !data || typeof data.id !== 'string' || data.id.length > 80) return;
@@ -160,7 +166,7 @@ export class Net {
       const netId = `${key}:${e.k}`;
       if (this.seen.has(netId)) continue;
       this.seen.add(netId);
-      this.hooks.onLantern({ netId, text: typeof e.t === 'string' ? e.t.slice(0, 40) : '', color: e.c, mode: e.m === 'sky' ? 'sky' : 'water' }, '', !firstSight, peerId);
+      this.hooks.onLantern({ netId, text: typeof e.t === 'string' ? e.t.slice(0, 40) : '', color: e.c, mode: e.m === 'sky' ? 'sky' : 'water', pr: typeof e.pr === 'string' ? e.pr.slice(0, 80) : '' }, '', !firstSight, peerId);
     }
   }
 
@@ -175,6 +181,7 @@ export class Net {
   // share where we stand: when we move more than a step, start a launch pose, or every few seconds anyway
   sendNote(i) { if (this.sendNoteAction && this.peers > 0) { try { this.sendNoteAction.send({ i }); } catch {} } }
   sendEmote(k) { if (this.sendEmoteAction && this.peers > 0) { try { this.sendEmoteAction.send({ k }); } catch {} } }
+  sendTogether(to, a, extra = {}) { if (this.sendTogetherAction && this.peers > 0) { try { this.sendTogetherAction.send({ to, a, m: extra.m, pr: extra.pr }, { target: to }); } catch {} } }
   get myId() { return this.selfId || ''; }
   sendPos(x, z, cer, scarf, sit = false, boat = false, rd = '') {
     if (!this.sendPosAction || this.peers === 0) return;
