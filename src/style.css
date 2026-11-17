@@ -309,3 +309,4 @@ body.hud-off #netline { display: none; }
 .bank b { letter-spacing: .5px; }
 .bank-holder { font-size: 13px; color: #c9b597; margin-top: 4px; }
 .support-btn { display: block; margin: 14px auto 0; }
+.support-go { display: inline-block; text-decoration: none; margin-top: 4px; }

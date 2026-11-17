@@ -317,7 +317,7 @@ https://ycyeom.github.io/wish-lanterns/
   the click; browse-only in the Genex app). Ownership comes only from `getEntitlements()`.
 - `gold` is in `COLORS` with `premium: true`: skipped by the normal swatches and by ambient lanterns;
   the server accepts it like any colour, so everyone sees gold lanterns (gold frame, six winking glints).
-- `src/support.js` holds the maker's bank account. The diary's "만든 사람 응원하기" button and its
-  panel (copy account number) appear only off Genex and only when `BANK.number` is set. Genex forbids
+- `src/support.js` holds the maker's Buy Me a Coffee link. The diary's "만든 사람 응원하기" button and its
+  panel (a link that opens the page in a new tab) appear only off Genex and only when `SUPPORT_URL` is set. Genex forbids
   donation prompts, so nothing of it may show on Genex's pages.
 - Store picture: rendered from the game (`.studio/goldicon.mjs`), kept in `.genex/scratch/`.

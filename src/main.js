@@ -16,7 +16,7 @@ const T_ = L;   // the same, for code where L names a lantern
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
 import { shop, initShop, buyGold, fakeShop } from './shop.js';
-import { BANK } from './support.js';
+import { SUPPORT_URL } from './support.js';
 initShop();
 import * as shore from './shore.js';
 import { createWalker } from './walker.js';
@@ -1070,8 +1070,8 @@ if (EN) {
     ['[data-emote=wave]', 'title', 'Wave (1)'], ['[data-emote=bow]', 'title', 'Bow (2)'], ['[data-emote=jump]', 'title', 'Hop (3)'], ['[data-emote=heart]', 'title', 'Heart (4)'], ['[data-emote=sit]', 'title', 'Sit (5)'],
     ['#goldPanel h2', 'text', '✨ Golden Lantern'], ['#goldPanel .gold-desc', 'text', 'A lantern of golden paper with glints that dance around it. Once it is yours you can launch it any time, and everyone on the lake sees it sparkle.'],
     ['#goldBuy', 'text', 'Get the Golden Lantern'], ['#goldOwned .gold-note', 'text', 'It is already yours'], ['#goldUse', 'text', 'Launch in gold'], ['#goldWhere', 'text', 'Find it on the game’s page at genex.games'],
-    ['#supportPanel h2', 'text', '💛 Support the maker'], ['#supportPanel .gold-desc', 'text', 'Wish Lanterns is made by one person. If you enjoyed your stay, a small gift helps tend the lake.'],
-    ['#bankCopy', 'text', 'Copy the account number'], ['#supportBtn', 'text', '💛 Support the maker'], ['.bank-holder', 'html', 'Account holder <span id="bankHolder"></span>'],
+    ['#supportPanel h2', 'text', '💛 Support the maker'], ['#supportPanel .gold-desc', 'text', 'Wish Lanterns is made by one person. If you enjoyed your stay, a coffee helps tend the lake.'],
+    ['#supportGo', 'text', '☕ Buy me a coffee'], ['#supportBtn', 'text', '💛 Support the maker'],
     ['#shareBtn', 'text', '📸 Keep this moment'], ['#wishBtn', 'text', '🌠 Make a wish'],
     ['#launchBtn', 'text', '🏮 Go to the water and launch'],
     ['#compose h2', 'text', 'My lantern'], ['#compose .label:not(.where)', 'text', 'Colour'],
@@ -1359,19 +1359,10 @@ $('goldBuy').onclick = () => {
 $('goldUse').onclick = () => { $('goldPanel').classList.add('hidden'); pickGold(); audio.tick(); };
 syncGold();
 
-// supporting the maker (the game's own sites only): the bank account, with a copy button
-if (!shop.onGenex && BANK.number) $('supportBtn').classList.remove('hidden');
-$('supportBtn').onclick = () => {
-  audio.tick();
-  $('bankName').textContent = BANK.bank; $('bankNo').textContent = BANK.number; $('bankHolder').textContent = BANK.holder;
-  $('supportPanel').classList.remove('hidden');
-};
-$('bankCopy').onclick = async () => {
-  const t = `${BANK.bank} ${BANK.number}`;
-  let ok = false;
-  try { await navigator.clipboard.writeText(t); ok = true; } catch {}
-  toast(ok ? L('계좌번호를 복사했어요 · 마음 써 주셔서 고마워요 💛', 'Account number copied · thank you 💛') : L('계좌번호를 길게 눌러 복사해 주세요', 'Press and hold the number to copy it'), 3200);
-};
+// supporting the maker (the game's own sites only): a link to the maker's Buy Me a Coffee page
+if (!shop.onGenex && SUPPORT_URL) { $('supportBtn').classList.remove('hidden'); $('supportGo').href = SUPPORT_URL; }
+$('supportBtn').onclick = () => { audio.tick(); $('supportPanel').classList.remove('hidden'); };
+$('supportGo').onclick = () => { audio.tick(); setTimeout(() => $('supportPanel').classList.add('hidden'), 300); };
 
 PRESETS.forEach(p => {
   const b = document.createElement('button'); b.className = 'chip'; b.textContent = p;
