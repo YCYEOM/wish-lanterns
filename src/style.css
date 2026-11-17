@@ -294,3 +294,18 @@ body.hud-off #netline { display: none; }
 #compose.guest .modes, #compose.guest .label.where { display: none; }
 .tog-note { font-size: 12.5px; color: #e8c9a0; margin: 2px 0 8px; line-height: 1.5; word-break: keep-all; }
 .card-pair { font-size: 13px; color: #ffd9a6; margin: 6px 0 2px; text-align: center; word-break: keep-all; }
+
+/* the Golden Lantern swatch and its shop card; the support panel */
+.sw.gold { background: radial-gradient(circle at 38% 32%, #fffbe0, #f8d25a 45%, #c48a1c 90%); box-shadow: 0 0 16px #f5c542, 0 0 4px #fff6 inset; position: relative; }
+.sw.gold.locked::after { content: '🔒'; position: absolute; right: -6px; bottom: -6px; font-size: 13px; }
+.panel.over { z-index: 30; background: rgba(14,18,44,.98); }
+.gold-img { display: block; width: 120px; height: 120px; border-radius: 18px; margin: 0 auto 10px; object-fit: cover; box-shadow: 0 0 30px rgba(255,200,80,.35); }
+.gold-img:not([src]) { display: none; }
+.gold-panel, .support-panel { text-align: center; }
+.gold-desc { font-size: 14px; color: #e8d6bc; line-height: 1.6; margin: 0 0 12px; }
+.gold-price { font-size: 15px; color: #ffd98a; margin-bottom: 12px; }
+.gold-note { font-size: 13px; color: #c9b597; margin: 6px 0 10px; }
+.bank { background: rgba(0,0,0,.28); border: 1px solid rgba(255,210,160,.25); border-radius: 14px; padding: 12px; margin: 4px 0 14px; color: #fff1dc; font-size: 15px; user-select: text; -webkit-user-select: text; }
+.bank b { letter-spacing: .5px; }
+.bank-holder { font-size: 13px; color: #c9b597; margin-top: 4px; }
+.support-btn { display: block; margin: 14px auto 0; }

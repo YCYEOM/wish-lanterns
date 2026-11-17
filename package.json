@@ -12,6 +12,7 @@
     "vite": "^6.0.0"
   },
   "dependencies": {
+    "@genex-ai/embed-sdk": "0.36.0",
     "trystero": "^0.26.0"
   }
 }

@@ -304,3 +304,20 @@ https://ycyeom.github.io/wish-lanterns/
 - A pair floats joined: soft spring to 3.2 m (water) / 3.6 m (sky), a sagging line with nine small lights and two beads running along it (updatePairs). Card shows "🤝 launched together" and the companion's words; a heart bursts on both. Diary meta says so; the constellation adds a small companion star with a short line.
 - If the other stops/leaves/times out (90 s): while writing, the panel turns back to a solo lantern; if you were already ready, a bar offers "Launch on my own".
 - Tests: `.studio/together.mjs`, `together2.mjs` (thread photo, card, diary), `together3.mjs` (cancel / leave) — need `wrangler dev` on :8787.
+
+## Golden Lantern (Genex store item) and supporting the maker
+
+- `src/shop.js`: on Genex's own hosts only (`*.genex.technology`, `genex.games`, or localhost with
+  `?genex_local_test=1`) the game imports `@genex-ai/embed-sdk` (its own chunk), calls `initEmbed`
+  with `src/genex.config.js`, reads `getShop()` and `getEntitlements()`. The item is found by its
+  `gold-lantern` tag (or its name). It is a durable item, "Golden Lantern", draft id
+  `cmwka20cn02a13gt9buv3t84v`, 100 Nex; the person puts it on sale.
+- The gold swatch shows only when the store lists the item or the player owns it; locked, it opens
+  the item card (price in Nex and USD from the server, a Buy button that calls `buy()` first thing in
+  the click; browse-only in the Genex app). Ownership comes only from `getEntitlements()`.
+- `gold` is in `COLORS` with `premium: true`: skipped by the normal swatches and by ambient lanterns;
+  the server accepts it like any colour, so everyone sees gold lanterns (gold frame, six winking glints).
+- `src/support.js` holds the maker's bank account. The diary's "만든 사람 응원하기" button and its
+  panel (copy account number) appear only off Genex and only when `BANK.number` is set. Genex forbids
+  donation prompts, so nothing of it may show on Genex's pages.
+- Store picture: rendered from the game (`.studio/goldicon.mjs`), kept in `.genex/scratch/`.

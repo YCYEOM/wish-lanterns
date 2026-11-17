@@ -15,6 +15,9 @@ import { EN, L, setLang } from './i18n.js';
 const T_ = L;   // the same, for code where L names a lantern
 import { makeCoverDemos } from './cover-shot.js';
 import { installStudio } from './studio.js';
+import { shop, initShop, buyGold, fakeShop } from './shop.js';
+import { BANK } from './support.js';
+initShop();
 import * as shore from './shore.js';
 import { createWalker } from './walker.js';
 import { createAtmosphere, fetchSeoulWeather, WEATHER, WEATHER_KINDS } from './weather.js';
@@ -479,6 +482,7 @@ const GEO = {
   ], 10),
 };
 const darkMat = new THREE.MeshBasicMaterial({ color: 0x1a0f08 });
+const goldMat = new THREE.MeshBasicMaterial({ color: 0xb8801c });   // the Golden Lantern's frame
 
 const lanterns = [];
 const lanternGroup = new THREE.Group(); scene.add(lanternGroup);
@@ -491,7 +495,7 @@ function makeLantern(opts) {
   gradientColors(paper, new THREE.Color(col.lamp ?? col.hex).lerp(new THREE.Color(0xffd9a0), 0.1), 0.5, opts.mode === 'water' ? 1.1 : 1.0);
   const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.96, side: THREE.DoubleSide, fog: false });
   g.add(new THREE.Mesh(paper, mat));
-  if (opts.mode === 'water') { g.add(new THREE.Mesh(GEO.base, darkMat)); g.add(new THREE.Mesh(GEO.frame, darkMat)); }
+  if (opts.mode === 'water') { const fm = col.premium ? goldMat : darkMat; g.add(new THREE.Mesh(GEO.base, fm)); g.add(new THREE.Mesh(GEO.frame, fm)); }
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.8 }));
   glow.scale.setScalar(4.2); glow.position.y = 0.45;
   const baseScale = opts.mode === 'water' ? 1.5 : 1.7;
@@ -509,6 +513,7 @@ function makeLantern(opts) {
     love: loveOf((opts.hearts | 0) + (save.hearted.includes(opts.id) ? 1 : 0)),
   };
   g.rotation.y = L.rot;
+  if (col.premium) addGlints(L);
   lanterns.push(L);
   return L;
 }
@@ -527,7 +532,27 @@ const HALO = (() => {
   g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 })();
+// the Golden Lantern's glints: a four-pointed twinkle
+const GLINT = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 12); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  for (const [w, h] of [[30, 2.2], [2.2, 30]]) {
+    const l = g.createRadialGradient(32, 32, 0, 32, 32, 30); l.addColorStop(0, 'rgba(255,255,255,.95)'); l.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = l; g.beginPath(); g.ellipse(32, 32, w, h, 0, 0, Math.PI * 2); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+function addGlints(L) {
+  L.glints = [];
+  for (let i = 0; i < 6; i++) {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLINT, color: 0xfff1b0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0 }));
+    m.scale.setScalar(0.5); L.group.add(m); L.glints.push(m);
+  }
+}
 function removeLantern(L) {
+  if (L.glints) L.glints.forEach((m) => m.material.dispose());
   lanternGroup.remove(L.group); lanternGroup.remove(L.refl);
   L.mat.dispose(); L.glow.material.dispose(); L.refl.material.dispose();
   if (L.halo) L.halo.material.dispose();
@@ -877,6 +902,14 @@ function updateLanterns(dt) {
       m.position.set(Math.cos(a) * 0.6, 0.6 + u * 2.4, Math.sin(a) * 0.6);
       m.material.opacity = mk * Math.sin(u * Math.PI) * 0.95 * L.alpha * near;
     });
+    // gold: glints wink on and off around the paper, each in its own rhythm
+    if (L.glints) L.glints.forEach((m, i) => {
+      const u = (T * (0.55 + i * 0.07) + i * 0.37 + L.ph) % 1, a = i * 1.05 + L.ph + T * 0.25;
+      const y = 0.15 + (((i * 0.29 + Math.floor(T * (0.55 + i * 0.07) + i * 0.37 + L.ph)) * 0.618) % 1) * 1.15;
+      m.position.set(Math.cos(a) * 0.5, y, Math.sin(a) * 0.5);
+      const k = u < 0.35 ? Math.sin((u / 0.35) * Math.PI) : 0;
+      m.material.opacity = k * L.alpha * near; m.scale.setScalar(0.25 + 0.45 * k);
+    });
     if (L.mode === 'water') {
       L.refl.position.set(L.x, -2.2, L.z);
       L.refl.scale.set(3.2 + Math.sin(T * 2 + L.ph) * 0.4, 8, 1);
@@ -1035,6 +1068,10 @@ if (EN) {
     ['[data-emote=wave]', 'html', '👋<span>Wave</span>'], ['[data-emote=bow]', 'html', '🙇<span>Bow</span>'], ['[data-emote=jump]', 'html', '🎉<span>Hop</span>'],
     ['[data-emote=heart]', 'html', '💕<span>Heart</span>'], ['[data-emote=sit]', 'html', '🪑<span>Sit</span>'],
     ['[data-emote=wave]', 'title', 'Wave (1)'], ['[data-emote=bow]', 'title', 'Bow (2)'], ['[data-emote=jump]', 'title', 'Hop (3)'], ['[data-emote=heart]', 'title', 'Heart (4)'], ['[data-emote=sit]', 'title', 'Sit (5)'],
+    ['#goldPanel h2', 'text', '✨ Golden Lantern'], ['#goldPanel .gold-desc', 'text', 'A lantern of golden paper with glints that dance around it. Once it is yours you can launch it any time, and everyone on the lake sees it sparkle.'],
+    ['#goldBuy', 'text', 'Get the Golden Lantern'], ['#goldOwned .gold-note', 'text', 'It is already yours'], ['#goldUse', 'text', 'Launch in gold'], ['#goldWhere', 'text', 'Find it on the game’s page at genex.games'],
+    ['#supportPanel h2', 'text', '💛 Support the maker'], ['#supportPanel .gold-desc', 'text', 'Wish Lanterns is made by one person. If you enjoyed your stay, a small gift helps tend the lake.'],
+    ['#bankCopy', 'text', 'Copy the account number'], ['#supportBtn', 'text', '💛 Support the maker'], ['.bank-holder', 'html', 'Account holder <span id="bankHolder"></span>'],
     ['#shareBtn', 'text', '📸 Keep this moment'], ['#wishBtn', 'text', '🌠 Make a wish'],
     ['#launchBtn', 'text', '🏮 Go to the water and launch'],
     ['#compose h2', 'text', 'My lantern'], ['#compose .label:not(.where)', 'text', 'Colour'],
@@ -1280,11 +1317,62 @@ $('title').addEventListener('pointerdown', startGame);
 
 // compose panel
 COLORS.forEach((c, i) => {
+  if (c.premium) return;
   const b = document.createElement('button');
   b.className = 'sw' + (i === 0 ? ' on' : ''); b.style.setProperty('--c', c.css); b.title = c.name;
   b.onclick = () => { composeColor = c.id; document.querySelectorAll('.sw').forEach(x => x.classList.toggle('on', x === b)); audio.tick(); };
   $('swatches').appendChild(b);
 });
+// the Golden Lantern swatch: on Genex's pages only; locked until owned, a tap then opens its shop card
+const GOLD = COLORS.find((c) => c.premium);
+const goldSw = document.createElement('button');
+goldSw.className = 'sw gold hidden'; goldSw.style.setProperty('--c', GOLD.css); goldSw.title = L('금빛 등불', 'Golden Lantern');
+function pickGold() { composeColor = GOLD.id; document.querySelectorAll('.sw').forEach(x => x.classList.toggle('on', x === goldSw)); }
+goldSw.onclick = () => { audio.tick(); if (!shop.owned) { openGold(); return; } pickGold(); };
+$('swatches').appendChild(goldSw);
+function syncGold() {
+  goldSw.classList.toggle('hidden', !(shop.owned || shop.item));
+  goldSw.classList.toggle('locked', !shop.owned);
+  if (!shop.owned && composeColor === GOLD.id) { composeColor = COLORS[0].id; document.querySelectorAll('.sw').forEach((x, i) => x.classList.toggle('on', i === 0)); }
+  const it = shop.item;
+  $('goldPrice').textContent = it ? `${it.priceCoins.toLocaleString()} Nex · $${(it.priceDisplayUsdCents / 100).toFixed(2)}` : '';
+  if (it && it.iconUrl) $('goldImg').src = it.iconUrl;
+  const own = shop.owned;
+  $('goldBuy').classList.toggle('hidden', own || !shop.canBuy || !it);
+  $('goldOwned').classList.toggle('hidden', !own);
+  $('goldWhere').classList.toggle('hidden', own || shop.canBuy);
+}
+shop.onChange = syncGold;
+function openGold() { syncGold(); $('goldPanel').classList.remove('hidden'); }
+$('goldBuy').onclick = () => {
+  const p = buyGold();   // first thing in the click: Genex opens its own confirmation
+  $('goldBuy').disabled = true;
+  p.then((r) => {
+    $('goldBuy').disabled = false;
+    if (r === 'owned') {
+      $('goldPanel').classList.add('hidden'); pickGold();
+      audio.chime([1046.5, 1318.5, 1567.98, 2093], 0.14);
+      toast(L('✨ 금빛 등불이 생겼어요 · 고맙습니다!', '✨ The Golden Lantern is yours · thank you!'), 3600);
+    } else if (r === 'insufficient_balance') toast(L('Nex가 조금 모자라요 · Genex에서 충전할 수 있어요', 'Not quite enough Nex · you can top up on Genex'), 3600);
+  });
+};
+$('goldUse').onclick = () => { $('goldPanel').classList.add('hidden'); pickGold(); audio.tick(); };
+syncGold();
+
+// supporting the maker (the game's own sites only): the bank account, with a copy button
+if (!shop.onGenex && BANK.number) $('supportBtn').classList.remove('hidden');
+$('supportBtn').onclick = () => {
+  audio.tick();
+  $('bankName').textContent = BANK.bank; $('bankNo').textContent = BANK.number; $('bankHolder').textContent = BANK.holder;
+  $('supportPanel').classList.remove('hidden');
+};
+$('bankCopy').onclick = async () => {
+  const t = `${BANK.bank} ${BANK.number}`;
+  let ok = false;
+  try { await navigator.clipboard.writeText(t); ok = true; } catch {}
+  toast(ok ? L('계좌번호를 복사했어요 · 마음 써 주셔서 고마워요 💛', 'Account number copied · thank you 💛') : L('계좌번호를 길게 눌러 복사해 주세요', 'Press and hold the number to copy it'), 3200);
+};
+
 PRESETS.forEach(p => {
   const b = document.createElement('button'); b.className = 'chip'; b.textContent = p;
   b.onclick = () => { $('msg').value = p; onMsgInput(); audio.tick(); };
@@ -1308,6 +1396,8 @@ function openCompose() {
   setTimeout(() => $('msg').focus(), 50);
 }
 function closePanel(which) {
+  if (which === 'gold') { $('goldPanel').classList.add('hidden'); return; }
+  if (which === 'support') { $('supportPanel').classList.add('hidden'); return; }
   if (which === 'share') { $('sharePanel').classList.add('hidden'); if (screen === 'share') screen = 'lake'; return; }
   if (which === 'lakes') { $('lakePanel').classList.add('hidden'); if (screen === 'lakes') screen = 'lake'; return; }
   if (which === 'music') { $('musicPanel').classList.add('hidden'); if (screen === 'music') screen = 'lake'; return; }
@@ -2202,7 +2292,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { $('notePanel').classList.add('hidden'); closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary'); if (screen === 'music') closePanel('music'); if (screen === 'lakes') closePanel('lakes'); if (screen === 'share') closePanel('share'); }
+  if (e.key === 'Escape') { $('goldPanel').classList.add('hidden'); $('supportPanel').classList.add('hidden'); $('notePanel').classList.add('hidden'); closeCard(); if (screen === 'compose') closePanel('compose'); if (screen === 'diary') closePanel('diary'); if (screen === 'music') closePanel('music'); if (screen === 'lakes') closePanel('lakes'); if (screen === 'share') closePanel('share'); }
   else if ((e.key === 'Enter' || e.key === ' ') && screen === 'title') startGame();
 });
 
@@ -2323,6 +2413,8 @@ window.__studio.moon = (p) => { if (typeof p === 'number') uniforms.moonPhase.va
 window.__studio.atmos = () => ({ ...atmos.state(), seoul: { ...seoul }, line: weatherLine() });
 window.__studio.music = () => ({ on: audio.musicOn, cfg: { ...audio.cfg }, bar: audio.bar | 0, gain: audio.musicGain ? +audio.musicGain.gain.value.toFixed(3) : null, nature: audio.nature ? +audio.nature.gain.value.toFixed(3) : null, sfx: audio.sfx ? +audio.sfx.gain.value.toFixed(3) : null, echo: audio.echoWet ? +audio.echoWet.gain.value.toFixed(3) : null });
 window.__studio.view = () => ({ ...walker.view, dir: walker.viewDir(), st: walker.state() });
+window.__studio.fakeShop = fakeShop;
+window.__studio.gold = (mode = 'water', z = 12) => { makeLantern({ id: 'gold' + mode, text: '', color: 'gold', mode, x: 0, y: mode === 'sky' ? 2.6 : 0, z }); };
 window.__studio.swatch = () => { COLORS.forEach((c, i) => { makeLantern({ id: 'sw' + i, color: c.id, mode: 'water', x: (i - 2) * 2.2, y: 0, z: 4 }); makeLantern({ id: 'sv' + i, color: c.id, mode: 'sky', x: (i - 2) * 2.2, y: 4.5, z: 2 }); });
   lanterns.filter(l => /^s[wv]/.test(l.id)).forEach(l => { l.vx = l.vz = l.vy = 0; l.speed = 0; }); return true; };
 window.__studio.night = (k) => { nightOverride = k; return uniforms.nightK.value; };

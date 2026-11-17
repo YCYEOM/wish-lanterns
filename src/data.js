@@ -8,6 +8,8 @@ export const COLORS = [
   { id: 'sky', name: L('하늘', 'Sky'), hex: 0x8fd0ff, lamp: 0x3f9cff, css: '#5fa6ee' },
   { id: 'mint', name: L('연두', 'Leaf'), hex: 0xb4f08a, lamp: 0x72d84a, css: '#92d65c' },
   { id: 'lilac', name: L('보라', 'Lilac'), hex: 0xc6a2ff, lamp: 0x9a5cff, css: '#a66cf2' },
+  // the Golden Lantern, a Genex store item: only its owners can pick it, everyone sees it sparkle
+  { id: 'gold', name: L('금빛', 'Gold'), hex: 0xffd36a, lamp: 0xffbf2a, css: '#f5c542', premium: true },
 ];
 
 export const PRESETS = EN ? ['You did well today', "It'll all be okay", 'I miss you', 'Thank you', 'Stay well', 'I need a good sleep'] : [
